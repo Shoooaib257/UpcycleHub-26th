@@ -238,16 +238,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/products', async (req, res) => {
     try {
-      const productData = insertProductSchema.parse(req.body);
+      console.log('Product creation request received:', req.body);
       
+      // Check for required fields before validation
+      if (!req.body.title || !req.body.description || !req.body.category || 
+          !req.body.condition || !req.body.location || !req.body.sellerId) {
+        console.error('Missing required fields in product creation request:', req.body);
+        return res.status(400).json({ 
+          message: 'Missing required fields',
+          missingFields: Object.entries({
+            title: !req.body.title,
+            description: !req.body.description,
+            category: !req.body.category,
+            condition: !req.body.condition,
+            location: !req.body.location,
+            sellerId: !req.body.sellerId,
+            price: !req.body.price
+          }).filter(([_, isMissing]) => isMissing).map(([field]) => field)
+        });
+      }
+      
+      let productData;
+      try {
+        productData = insertProductSchema.parse(req.body);
+        console.log('Product data validated successfully:', productData);
+      } catch (validationError) {
+        if (validationError instanceof z.ZodError) {
+          console.error('Validation error in product creation:', validationError.errors);
+          return res.status(400).json({ 
+            message: 'Invalid data', 
+            errors: validationError.errors 
+          });
+        }
+        throw validationError;
+      }
+      
+      // Create the product
+      console.log('Creating product with data:', productData);
       const product = await storage.createProduct(productData);
+      console.log('Product created successfully:', product);
       
       res.status(201).json({ product, message: 'Product created successfully' });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Invalid data', errors: error.errors });
-      }
-      res.status(500).json({ message: 'Failed to create product' });
+      console.error('Error in product creation:', error);
+      res.status(500).json({ message: 'Failed to create product', error: String(error) });
     }
   });
 
