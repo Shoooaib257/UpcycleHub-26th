@@ -127,6 +127,12 @@ const AddProduct = () => {
           throw new Error("Failed to parse server response");
         }
         
+        // Check if we're using the mock API (will have a "success" field)
+        if (data.success) {
+          console.log("Using mock API response, skipping image uploads");
+          return data;
+        }
+        
         // Upload images for the product
         if (uploadedImages.length > 0) {
           console.log(`Uploading ${uploadedImages.length} product images`);
@@ -169,13 +175,21 @@ const AddProduct = () => {
     },
     onSuccess: (data) => {
       console.log("Product creation successful, navigating to dashboard", data);
+      
+      // Show success message
       toast({
         title: "Product added",
         description: "Your item has been listed successfully.",
       });
+      
+      // Invalidate query cache to refresh product lists
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products/seller"] });
-      navigate("/dashboard");
+      
+      // Give the UI some time to update before redirecting (helps with UX)
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 1000);
     },
     onError: (error: Error) => {
       console.error("Product creation error:", error);
