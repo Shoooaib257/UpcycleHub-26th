@@ -6,5 +6,5 @@ esbuild.build({
   minify: true,
   platform: 'node',
   target: 'node14',
-  outfile: 'api-direct.bundled.js',
+  outfile: 'api-direct.js',
 }).catch(() => process.exit(1)); 
