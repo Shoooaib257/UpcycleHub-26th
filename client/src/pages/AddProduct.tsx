@@ -64,7 +64,30 @@ const AddProduct = () => {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [uploadedImages, setUploadedImages] = useState<{ url: string; isMain: boolean }[]>([]);
-  const [form, setForm] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Initialize form with default values
+  const form = useForm<ProductFormValues>({
+    resolver: zodResolver(productFormSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      price: "",
+      category: "",
+      condition: "",
+      location: "",
+      sellerId: user ? user.id : 0,
+      status: "active",
+    },
+  });
+  
+  // Update the form's sellerId value when user changes
+  useEffect(() => {
+    if (user) {
+      form.setValue("sellerId", user.id);
+      setIsLoading(false);
+    }
+  }, [user, form]);
 
   // Redirect if not logged in or not a seller
   useEffect(() => {
@@ -82,25 +105,10 @@ const AddProduct = () => {
       navigate("/");
       return;
     }
-
-    // Initialize the form with default values once we know the user is logged in
-    setForm(useForm<ProductFormValues>({
-      resolver: zodResolver(productFormSchema),
-      defaultValues: {
-        title: "",
-        description: "",
-        price: "",
-        category: "",
-        condition: "",
-        location: "",
-        sellerId: user.id,
-        status: "active",
-      },
-    }));
   }, [user, navigate, toast]);
 
-  // If still checking auth status or initializing form, show loading
-  if (!user || !form) {
+  // If still checking auth status, show loading
+  if (isLoading || !user) {
     return (
       <div className="max-w-3xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="animate-pulse">
@@ -121,7 +129,7 @@ const AddProduct = () => {
         const priceInCents = Math.round(parseFloat(values.price) * 100);
         
         // More detailed logging for debug purposes
-        console.log("Starting product creation on Netlify with data:", {
+        console.log("Starting product creation with data:", {
           ...values,
           price: priceInCents,
           sellerId: user.id,
@@ -144,14 +152,8 @@ const AddProduct = () => {
           throw new Error("Failed to parse server response");
         }
         
-        // Check if we're using the mock API (will have a "success" field)
-        if (data.success) {
-          console.log("Using mock API response, skipping image uploads");
-          return data;
-        }
-        
-        // Upload images for the product
-        if (uploadedImages.length > 0) {
+        // Handle image uploads if needed
+        if (uploadedImages.length > 0 && data.product?.id) {
           console.log(`Uploading ${uploadedImages.length} product images`);
           const imagePromises = uploadedImages.map(async (image, index) => {
             try {
@@ -182,11 +184,6 @@ const AddProduct = () => {
         return data;
       } catch (error) {
         console.error("Error creating product:", error);
-        // Display error details in the console
-        if (error instanceof Error) {
-          console.error("Error message:", error.message);
-          console.error("Error stack:", error.stack);
-        }
         throw error;
       }
     },
@@ -203,10 +200,8 @@ const AddProduct = () => {
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products/seller"] });
       
-      // Give the UI some time to update before redirecting (helps with UX)
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 1000);
+      // Navigate to dashboard
+      navigate("/dashboard");
     },
     onError: (error: Error) => {
       console.error("Product creation error:", error);
@@ -222,17 +217,6 @@ const AddProduct = () => {
   const onSubmit = (values: ProductFormValues) => {
     console.log("Form submission started with values:", values);
     
-    // Make sure we have user ID
-    if (!user || !user.id) {
-      console.error("Cannot submit form: user ID is missing");
-      toast({
-        title: "Error",
-        description: "User information is missing. Please log in again.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
     // Check for images
     if (uploadedImages.length === 0) {
       console.log("No images uploaded, showing error toast");
@@ -244,72 +228,15 @@ const AddProduct = () => {
       return;
     }
     
-    // Add a visual indicator that the form is being submitted
-    document.body.style.cursor = 'wait';
-    
-    // Add a debug indicator on the page (only visible in dev/testing)
-    const debugIndicator = document.createElement('div');
-    debugIndicator.id = 'form-submission-indicator';
-    debugIndicator.style.position = 'fixed';
-    debugIndicator.style.bottom = '10px';
-    debugIndicator.style.right = '10px';
-    debugIndicator.style.background = 'rgba(0,0,0,0.7)';
-    debugIndicator.style.color = 'white';
-    debugIndicator.style.padding = '10px';
-    debugIndicator.style.borderRadius = '5px';
-    debugIndicator.style.zIndex = '9999';
-    debugIndicator.style.fontSize = '12px';
-    debugIndicator.style.maxWidth = '80%';
-    debugIndicator.style.maxHeight = '200px';
-    debugIndicator.style.overflow = 'auto';
-    debugIndicator.textContent = 'Form submission started...';
-    document.body.appendChild(debugIndicator);
-    
-    const updateDebug = (message: string) => {
-      if (debugIndicator) {
-        debugIndicator.textContent += '\n' + message;
-        debugIndicator.scrollTop = debugIndicator.scrollHeight;
-      }
-      console.log(message);
-    };
-    
-    // Create a cleaned product object that matches server expectations exactly
-    const product = {
-      title: values.title,
-      description: values.description,
-      price: Math.round(parseFloat(values.price) * 100), // Convert to cents
-      category: values.category,
-      condition: values.condition,
-      location: values.location,
-      sellerId: user.id,
-      status: "active"
-    };
-    
-    updateDebug(`Starting mutation with data: ${JSON.stringify(product)}`);
-    console.log("Form validation passed, calling mutation with images:", uploadedImages);
-    
     try {
       createProduct.mutate(values);
-      updateDebug('Mutation called successfully');
     } catch (error) {
       console.error("Error caught in onSubmit:", error);
-      updateDebug(`Error in form submission: ${error}`);
       toast({
         title: "Submission Error",
-        description: "An error occurred while submitting the form. Check console for details.",
+        description: "An error occurred while submitting the form. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      // Reset cursor after a short delay (in case the mutation is very fast)
-      setTimeout(() => {
-        document.body.style.cursor = 'default';
-        // Remove debug indicator after 30 seconds
-        setTimeout(() => {
-          if (debugIndicator && debugIndicator.parentNode) {
-            debugIndicator.parentNode.removeChild(debugIndicator);
-          }
-        }, 30000);
-      }, 500);
     }
   };
 
@@ -485,7 +412,7 @@ const AddProduct = () => {
                 
                 {[...Array(5)].map((_, index) => (
                   <ImageUpload
-                    key={index}
+                    key={`upload-${index}`}
                     productId={`temp-${user.id}-${Date.now()}-${index}`}
                     onImageUploaded={(url) => handleImageUploaded(url, false)}
                   />
