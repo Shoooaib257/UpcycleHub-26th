@@ -99,38 +99,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      // First, check if we can reuse a stored user with this email
-      const savedUser = localStorage.getItem("user");
-      if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-        if (parsedUser.email === email) {
-          console.log("Reusing stored user with matching email");
-          // Make sure the user has seller privileges
-          if (!parsedUser.isSeller) {
-            parsedUser.isSeller = true;
-            localStorage.setItem("user", JSON.stringify(parsedUser));
-          }
-          setUser(parsedUser);
-          return;
-        }
+      // Authenticate with Supabase
+      const supabase = getSupabase();
+      const { data: { session }, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        throw authError;
       }
 
-      // If no stored user matches, create a mock user without hitting Supabase
-      console.log("Creating mock user for login");
-      const mockUser: User = {
-        id: crypto.randomUUID(), // Generate a proper UUID
-        email: email,
-        username: email.split('@')[0],
-        fullName: email.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' '),
-        avatar: null,
-        isSeller: true, // Always set to true
-        isCollector: true,
-        createdAt: new Date(),
-        password: password // Include the password to satisfy the User type
+      if (!session) {
+        throw new Error("No session returned after login");
+      }
+
+      // Set the session
+      setSession(session);
+
+      // Get user profile data
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError) {
+        console.error("Error fetching profile:", profileError);
+        // Continue with basic user data
+      }
+
+      // Create user object
+      const userWithProfile: User = {
+        id: session.user.id,
+        email: session.user.email || "",
+        username: profile?.username || session.user.email?.split('@')[0] || 'user',
+        fullName: profile?.full_name || session.user.email?.split('@')[0] || 'User',
+        avatar: profile?.avatar_url || null,
+        isSeller: profile?.is_seller || true,
+        isCollector: profile?.is_collector || true,
+        createdAt: new Date(session.user.created_at),
+        password: 'dummy-password' // Required by User type but never used
       };
       
-      setUser(mockUser);
-      localStorage.setItem("user", JSON.stringify(mockUser));
+      setUser(userWithProfile);
+      localStorage.setItem("user", JSON.stringify(userWithProfile));
       
     } catch (error) {
       console.error("Login error:", error);
@@ -143,23 +156,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signup = async (userData: SignupData) => {
     setIsLoading(true);
     try {
-      console.log("Creating mock user for signup");
+      const supabase = getSupabase();
       
-      // Create a mock user without hitting Supabase
-      const mockUser: User = {
-        id: crypto.randomUUID(), // Generate a proper UUID
+      // Create user in Supabase auth
+      const { data: { session }, error: authError } = await supabase.auth.signUp({
         email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            full_name: userData.fullName,
+            username: userData.username,
+            is_seller: userData.isSeller,
+            is_collector: userData.isCollector,
+          }
+        }
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      if (!session) {
+        throw new Error("No session returned after signup");
+      }
+
+      // Set the session
+      setSession(session);
+
+      // Create user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: session.user.id,
+          username: userData.username,
+          full_name: userData.fullName,
+          is_seller: userData.isSeller,
+          is_collector: userData.isCollector,
+          avatar_url: null,
+        }])
+        .select()
+        .single();
+
+      if (profileError) {
+        console.error("Error creating profile:", profileError);
+        // Continue with basic user data
+      }
+
+      // Create user object
+      const userWithProfile: User = {
+        id: session.user.id,
+        email: session.user.email || "",
         username: userData.username,
         fullName: userData.fullName,
         avatar: null,
         isSeller: userData.isSeller,
         isCollector: userData.isCollector,
-        createdAt: new Date(),
-        password: userData.password // Include the password to satisfy the User type
+        createdAt: new Date(session.user.created_at),
+        password: 'dummy-password' // Required by User type but never used
       };
       
-      setUser(mockUser);
-      localStorage.setItem("user", JSON.stringify(mockUser));
+      setUser(userWithProfile);
+      localStorage.setItem("user", JSON.stringify(userWithProfile));
     } catch (error) {
       console.error("Signup error:", error);
       throw error;
