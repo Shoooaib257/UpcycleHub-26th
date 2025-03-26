@@ -65,6 +65,9 @@ export async function apiRequest(
 // Minimal type definition for behavior on 401 responses
 type UnauthorizedBehavior = "returnNull" | "throw";
 
+// Define QueryFunction type locally to fix the linter error
+type QueryFunction<T> = (context: { queryKey: any[] }) => Promise<T>;
+
 // Optimized query function factory with minimal closure size
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
@@ -76,7 +79,7 @@ export const getQueryFn: <T>(options: {
     let fullUrl;
     if (isNetlify && typeof url === 'string' && url.startsWith('/api/')) {
       const pathWithoutApi = url.replace(/^\/api/, '');
-      fullUrl = `/.netlify/functions/api${pathWithoutApi}`;
+      fullUrl = `/.netlify/functions/api-direct${pathWithoutApi}`;
     } else {
       fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
     }
