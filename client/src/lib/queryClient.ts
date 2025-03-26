@@ -14,7 +14,10 @@ async function throwIfResNotOk(res: Response) {
 
 // Check if we're in Netlify environment
 const isNetlify = typeof window !== 'undefined' && 
-  window.location.hostname.includes('netlify.app');
+  (window.location.hostname.includes('netlify.app') || 
+   window.location.hostname.includes('netlify.com'));
+
+console.log(`Running in ${isNetlify ? 'Netlify' : 'development'} environment`);
 
 // Simplified API request function
 export async function apiRequest(
@@ -24,25 +27,39 @@ export async function apiRequest(
 ): Promise<Response> {
   // Handle URL path for Netlify deployment
   let fullUrl;
-  if (isNetlify && url.startsWith('/api/')) {
-    // For Netlify, the API routes are served from /.netlify/functions/api
-    // Remove the leading /api to prevent duplication
+  
+  if (isNetlify) {
+    // For Netlify, remove /api prefix when going to functions
     const pathWithoutApi = url.replace(/^\/api/, '');
     fullUrl = `/.netlify/functions/api${pathWithoutApi}`;
+    console.log(`Netlify API request: ${method} ${url} -> ${fullUrl}`);
   } else {
-    // For local development or URLs that don't start with /api/
+    // For local development
     fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+    console.log(`Development API request: ${method} ${fullUrl}`);
   }
   
-  const res = await fetch(fullUrl, {
-    method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
+  console.log(`Making ${method} request to ${fullUrl}${data ? ' with data' : ''}`);
+  
+  try {
+    const res = await fetch(fullUrl, {
+      method,
+      headers: data ? { "Content-Type": "application/json" } : {},
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: "include",
+    });
 
-  await throwIfResNotOk(res);
-  return res;
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`API Error (${res.status}): ${errorText}`);
+      throw new Error(`${res.status}: ${errorText || res.statusText}`);
+    }
+    
+    return res;
+  } catch (error) {
+    console.error(`API Request failed: ${error}`);
+    throw error;
+  }
 }
 
 // Minimal type definition for behavior on 401 responses
@@ -77,16 +94,12 @@ export const getQueryFn: <T>(options: {
   };
 };
 
-// Create an optimized query client with minimal default options
+// Create a query client with default options
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
-      staleTime: 300000, // 5 minutes
-      retry: false,
-    },
-    mutations: {
-      retry: false,
+      retry: 1,
+      staleTime: 5 * 60 * 1000, // 5 minutes
     },
   },
 });

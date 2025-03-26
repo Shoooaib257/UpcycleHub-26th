@@ -103,6 +103,13 @@ const AddProduct = () => {
         // Transform price from dollars to cents
         const priceInCents = Math.round(parseFloat(values.price) * 100);
         
+        // More detailed logging for debug purposes
+        console.log("Starting product creation on Netlify with data:", {
+          ...values,
+          price: priceInCents,
+          sellerId: user.id,
+        });
+        
         // Create the product
         const res = await apiRequest("POST", "/api/products", {
           ...values,
@@ -110,14 +117,22 @@ const AddProduct = () => {
           sellerId: user.id,
         });
         
-        const data = await res.json();
-        console.log("Product created successfully:", data);
+        console.log("Product API request complete, fetching JSON response");
+        let data;
+        try {
+          data = await res.json();
+          console.log("Product created successfully:", data);
+        } catch (jsonError) {
+          console.error("Failed to parse product creation response:", jsonError);
+          throw new Error("Failed to parse server response");
+        }
         
         // Upload images for the product
         if (uploadedImages.length > 0) {
+          console.log(`Uploading ${uploadedImages.length} product images`);
           const imagePromises = uploadedImages.map(async (image, index) => {
             try {
-              console.log(`Uploading image ${index + 1}/${uploadedImages.length}:`, image.url.substring(0, 50) + "...");
+              console.log(`Uploading image ${index + 1}/${uploadedImages.length}`);
               
               // Send the image data to the server
               const imageRes = await apiRequest("POST", `/api/products/${data.product.id}/images`, {
@@ -138,15 +153,22 @@ const AddProduct = () => {
           
           // Wait for all image uploads to complete
           await Promise.all(imagePromises);
+          console.log("All image uploads complete");
         }
         
         return data;
       } catch (error) {
         console.error("Error creating product:", error);
+        // Display error details in the console
+        if (error instanceof Error) {
+          console.error("Error message:", error.message);
+          console.error("Error stack:", error.stack);
+        }
         throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log("Product creation successful, navigating to dashboard", data);
       toast({
         title: "Product added",
         description: "Your item has been listed successfully.",
@@ -156,9 +178,9 @@ const AddProduct = () => {
       navigate("/dashboard");
     },
     onError: (error: Error) => {
-      console.error("Error details:", error);
+      console.error("Product creation error:", error);
       toast({
-        title: "Error",
+        title: "Error creating listing",
         description: error.message || "Failed to add product. Please try again.",
         variant: "destructive",
       });
@@ -168,6 +190,17 @@ const AddProduct = () => {
   // Handle form submission
   const onSubmit = (values: ProductFormValues) => {
     console.log("Form submission started with values:", values);
+    
+    // Make sure we have user ID
+    if (!user || !user.id) {
+      console.error("Cannot submit form: user ID is missing");
+      toast({
+        title: "Error",
+        description: "User information is missing. Please log in again.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Check for images
     if (uploadedImages.length === 0) {
@@ -180,14 +213,56 @@ const AddProduct = () => {
       return;
     }
     
-    console.log("Form validation passed, calling mutation with images:", uploadedImages);
     // Add a visual indicator that the form is being submitted
     document.body.style.cursor = 'wait';
     
+    // Add a debug indicator on the page (only visible in dev/testing)
+    const debugIndicator = document.createElement('div');
+    debugIndicator.id = 'form-submission-indicator';
+    debugIndicator.style.position = 'fixed';
+    debugIndicator.style.bottom = '10px';
+    debugIndicator.style.right = '10px';
+    debugIndicator.style.background = 'rgba(0,0,0,0.7)';
+    debugIndicator.style.color = 'white';
+    debugIndicator.style.padding = '10px';
+    debugIndicator.style.borderRadius = '5px';
+    debugIndicator.style.zIndex = '9999';
+    debugIndicator.style.fontSize = '12px';
+    debugIndicator.style.maxWidth = '80%';
+    debugIndicator.style.maxHeight = '200px';
+    debugIndicator.style.overflow = 'auto';
+    debugIndicator.textContent = 'Form submission started...';
+    document.body.appendChild(debugIndicator);
+    
+    const updateDebug = (message: string) => {
+      if (debugIndicator) {
+        debugIndicator.textContent += '\n' + message;
+        debugIndicator.scrollTop = debugIndicator.scrollHeight;
+      }
+      console.log(message);
+    };
+    
+    // Create a cleaned product object that matches server expectations exactly
+    const product = {
+      title: values.title,
+      description: values.description,
+      price: Math.round(parseFloat(values.price) * 100), // Convert to cents
+      category: values.category,
+      condition: values.condition,
+      location: values.location,
+      sellerId: user.id,
+      status: "active"
+    };
+    
+    updateDebug(`Starting mutation with data: ${JSON.stringify(product)}`);
+    console.log("Form validation passed, calling mutation with images:", uploadedImages);
+    
     try {
       createProduct.mutate(values);
+      updateDebug('Mutation called successfully');
     } catch (error) {
       console.error("Error caught in onSubmit:", error);
+      updateDebug(`Error in form submission: ${error}`);
       toast({
         title: "Submission Error",
         description: "An error occurred while submitting the form. Check console for details.",
@@ -197,6 +272,12 @@ const AddProduct = () => {
       // Reset cursor after a short delay (in case the mutation is very fast)
       setTimeout(() => {
         document.body.style.cursor = 'default';
+        // Remove debug indicator after 30 seconds
+        setTimeout(() => {
+          if (debugIndicator && debugIndicator.parentNode) {
+            debugIndicator.parentNode.removeChild(debugIndicator);
+          }
+        }, 30000);
       }, 500);
     }
   };
