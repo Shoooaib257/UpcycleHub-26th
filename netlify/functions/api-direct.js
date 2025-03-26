@@ -1,9 +1,11 @@
 // Simple Netlify function that doesn't require Express
-exports.handler = async function(event, context) {
-  // Store user data in memory (will reset on function cold starts)
-  const users = [];
-  let lastUserId = 1000;
+// Store data in memory (will persist until function cold starts)
+let products = [];
+let users = [];
+let lastUserId = 1000;
+let lastProductId = 1000;
 
+exports.handler = async function(event, context) {
   try {
     // Extract path and method from the event
     const path = event.path.replace('/.netlify/functions/api-direct', '');
@@ -109,41 +111,13 @@ exports.handler = async function(event, context) {
     if (method === 'GET' && path === '/products') {
       console.log('Fetching products');
       
-      // Return mock products
       return {
         statusCode: 200,
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          products: [
-            {
-              id: 1,
-              title: "Upcycled Denim Bag",
-              description: "Handcrafted bag made from recycled denim",
-              price: 4599, // in cents
-              category: "Accessories",
-              condition: "Like New",
-              location: "Portland, OR",
-              sellerId: 1000,
-              status: "active",
-              views: 14,
-              createdAt: new Date().toISOString()
-            },
-            {
-              id: 2,
-              title: "Repurposed Wooden Chair",
-              description: "Vintage chair restored with eco-friendly materials",
-              price: 12999, // in cents
-              category: "Furniture",
-              condition: "Good",
-              location: "Seattle, WA",
-              sellerId: 1001,
-              status: "active",
-              views: 23,
-              createdAt: new Date().toISOString()
-            }
-          ]
+          products: products
         })
       };
     }
@@ -152,13 +126,16 @@ exports.handler = async function(event, context) {
     if (method === 'POST' && path === '/products') {
       console.log('Creating product with data:', body);
       
-      // Create a mock product
+      // Create a new product with incremented ID
       const product = {
-        id: Math.floor(Math.random() * 1000) + 1000,
+        id: lastProductId++,
         ...body,
         createdAt: new Date().toISOString(),
         views: 0
       };
+      
+      // Add to products array
+      products.push(product);
       
       return {
         statusCode: 201,
@@ -172,12 +149,44 @@ exports.handler = async function(event, context) {
         })
       };
     }
+
+    // Handle product deletion
+    if (method === 'DELETE' && path.startsWith('/products/')) {
+      const productId = parseInt(path.split('/')[2]);
+      console.log('Deleting product:', productId);
+      
+      // Find and remove the product
+      const index = products.findIndex(p => p.id === productId);
+      if (index !== -1) {
+        products.splice(index, 1);
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            success: true,
+            message: "Product deleted successfully"
+          })
+        };
+      } else {
+        return {
+          statusCode: 404,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            success: false,
+            message: "Product not found"
+          })
+        };
+      }
+    }
     
     // Handle conversations endpoint
     if (method === 'GET' && path.startsWith('/conversations')) {
       console.log('Fetching conversations');
       
-      // Return empty conversations list
       return {
         statusCode: 200,
         headers: {
@@ -202,15 +211,15 @@ exports.handler = async function(event, context) {
     };
     
   } catch (error) {
-    console.error('Error in Netlify function:', error);
+    console.error('Error processing request:', error);
     return {
       statusCode: 500,
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        message: 'Internal server error',
-        error: error.message
+        error: error.message,
+        success: false
       })
     };
   }
