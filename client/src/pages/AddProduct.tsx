@@ -64,7 +64,6 @@ const AddProduct = () => {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [uploadedImages, setUploadedImages] = useState<{ url: string; isMain: boolean }[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   
   // Initialize form with default values
   const form = useForm<ProductFormValues>({
@@ -76,126 +75,58 @@ const AddProduct = () => {
       category: "",
       condition: "",
       location: "",
-      sellerId: user ? user.id : 0,
+      sellerId: 0,
       status: "active",
     },
   });
-  
-  // Update the form's sellerId value when user changes
-  useEffect(() => {
-    if (user) {
-      form.setValue("sellerId", user.id);
-      setIsLoading(false);
-    }
-  }, [user, form]);
-
-  // Redirect if not logged in
-  useEffect(() => {
-    if (!user) {
-      navigate("/auth?view=login");
-      return;
-    }
-    // No longer need to check if user is a seller
-  }, [user, navigate, toast]);
-
-  // If still checking auth status, show loading
-  if (isLoading || !user) {
-    return (
-      <div className="max-w-3xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-6"></div>
-          <div className="h-64 bg-gray-200 rounded mb-4"></div>
-          <div className="h-32 bg-gray-200 rounded mb-4"></div>
-          <div className="h-12 bg-gray-200 rounded"></div>
-        </div>
-      </div>
-    );
-  }
 
   // Create product mutation
-  const { mutate: createProductMutation, isPending } = useMutation({
+  const { mutate: createProduct, isPending } = useMutation({
     mutationFn: async (values: ProductFormValues) => {
-      try {
-        // Transform price from dollars to cents
-        const priceInCents = Math.round(parseFloat(values.price) * 100);
-        
-        // More detailed logging for debug purposes
-        console.log("Starting product creation with data:", {
-          ...values,
-          price: priceInCents,
-          sellerId: user.id,
-        });
-        
-        // Create the product
-        const res = await apiRequest("POST", "/api/products", {
-          ...values,
-          price: priceInCents,
-          sellerId: user.id,
-        });
-        
-        console.log("Product API request complete, fetching JSON response");
-        let data;
-        try {
-          data = await res.json();
-          console.log("Product created successfully:", data);
-        } catch (jsonError) {
-          console.error("Failed to parse product creation response:", jsonError);
-          throw new Error("Failed to parse server response");
-        }
-        
-        // Handle image uploads if needed
-        if (uploadedImages.length > 0 && data.product?.id) {
-          console.log(`Uploading ${uploadedImages.length} product images`);
-          const imagePromises = uploadedImages.map(async (image, index) => {
-            try {
-              console.log(`Uploading image ${index + 1}/${uploadedImages.length}`);
-              
-              // Send the image data to the server
-              const imageRes = await apiRequest("POST", `/api/products/${data.product.id}/images`, {
-                url: image.url,
-                isMain: image.isMain,
-                productId: data.product.id,
-              });
-              
-              const imageData = await imageRes.json();
-              console.log(`Image ${index + 1} uploaded successfully:`, imageData);
-              return imageData;
-            } catch (imageError) {
-              console.error(`Failed to upload image ${index + 1}:`, imageError);
-              // Continue with other images even if one fails
-              return null;
-            }
-          });
-          
-          // Wait for all image uploads to complete
-          await Promise.all(imagePromises);
-          console.log("All image uploads complete");
-        }
-        
-        return data;
-      } catch (error) {
-        console.error("Error creating product:", error);
-        throw error;
+      if (!user) {
+        throw new Error("You must be logged in to create a product");
       }
-    },
-    onSuccess: (data) => {
-      console.log("Product creation successful, navigating to dashboard", data);
+
+      // Transform price from dollars to cents
+      const priceInCents = Math.round(parseFloat(values.price) * 100);
       
-      // Show success message
+      // Create the product
+      const res = await apiRequest("POST", "/api/products", {
+        ...values,
+        price: priceInCents,
+        sellerId: user.id,
+      });
+      
+      const data = await res.json();
+      
+      // Handle image uploads if needed
+      if (uploadedImages.length > 0 && data.product?.id) {
+        const imagePromises = uploadedImages.map(async (image) => {
+          const imageRes = await apiRequest("POST", `/api/products/${data.product.id}/images`, {
+            url: image.url,
+            isMain: image.isMain,
+            productId: data.product.id,
+          });
+          return imageRes.json();
+        });
+        
+        await Promise.all(imagePromises);
+      }
+      
+      return data;
+    },
+    onSuccess: () => {
       toast({
         title: "Product added",
         description: "Your item has been listed successfully.",
       });
       
-      // Invalidate query cache to refresh product lists
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products/seller"] });
       
-      // Navigate to dashboard
       navigate("/dashboard");
     },
     onError: (error: Error) => {
-      console.error("Product creation error:", error);
       toast({
         title: "Error creating listing",
         description: error.message || "Failed to add product. Please try again.",
@@ -204,13 +135,18 @@ const AddProduct = () => {
     },
   });
 
+  // Update form when user changes
+  useEffect(() => {
+    if (user) {
+      form.setValue("sellerId", user.id);
+    } else {
+      navigate("/auth?view=login");
+    }
+  }, [user, form, navigate]);
+
   // Handle form submission
   const onSubmit = (values: ProductFormValues) => {
-    console.log("Form submission started with values:", values);
-    
-    // Check for images
     if (uploadedImages.length === 0) {
-      console.log("No images uploaded, showing error toast");
       toast({
         title: "Images required",
         description: "Please add at least one image for your product.",
@@ -219,28 +155,22 @@ const AddProduct = () => {
       return;
     }
     
-    try {
-      createProductMutation(values);
-    } catch (error) {
-      console.error("Error caught in onSubmit:", error);
-      toast({
-        title: "Submission Error",
-        description: "An error occurred while submitting the form. Please try again.",
-        variant: "destructive",
-      });
-    }
+    createProduct(values);
   };
 
   // Handle image upload
   const handleImageUploaded = (url: string, isMain: boolean) => {
     setUploadedImages((prev) => {
-      // If this is a main image, set all others to not main
       if (isMain) {
         return [...prev.map(img => ({ ...img, isMain: false })), { url, isMain }];
       }
       return [...prev, { url, isMain }];
     });
   };
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="max-w-3xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
