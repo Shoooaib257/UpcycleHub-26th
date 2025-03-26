@@ -99,29 +99,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
+      console.log("Attempting login for:", email);
+      
       // Authenticate with Supabase
       const supabase = getSupabase();
-      const { data: { session }, error: authError } = await supabase.auth.signInWithPassword({
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (authError) {
+        console.error("Supabase auth error:", authError);
+        if (authError.message.includes('Invalid login credentials')) {
+          throw new Error(
+            "Invalid email or password. Please check your credentials and try again."
+          );
+        }
         throw authError;
       }
 
-      if (!session) {
-        throw new Error("No session returned after login");
+      if (!data.session) {
+        console.error("No session returned after login");
+        throw new Error("Login failed. Please try again.");
       }
 
       // Set the session
-      setSession(session);
+      console.log("Login successful, setting session");
+      setSession(data.session);
 
       // Get user profile data
+      console.log("Fetching user profile");
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', data.session.user.id)
         .single();
 
       if (profileError) {
@@ -131,17 +142,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Create user object
       const userWithProfile: User = {
-        id: session.user.id,
-        email: session.user.email || "",
-        username: profile?.username || session.user.email?.split('@')[0] || 'user',
-        fullName: profile?.full_name || session.user.email?.split('@')[0] || 'User',
+        id: data.session.user.id,
+        email: data.session.user.email || "",
+        username: profile?.username || data.session.user.email?.split('@')[0] || 'user',
+        fullName: profile?.full_name || data.session.user.email?.split('@')[0] || 'User',
         avatar: profile?.avatar_url || null,
         isSeller: profile?.is_seller || true,
         isCollector: profile?.is_collector || true,
-        createdAt: new Date(session.user.created_at),
+        createdAt: new Date(data.session.user.created_at),
         password: 'dummy-password' // Required by User type but never used
       };
       
+      console.log("Setting user data:", { ...userWithProfile, password: '[REDACTED]' });
       setUser(userWithProfile);
       localStorage.setItem("user", JSON.stringify(userWithProfile));
       
