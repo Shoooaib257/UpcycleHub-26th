@@ -1,9 +1,9 @@
-// Simple Netlify function that doesn't require Express
-// Store data in memory (will persist until function cold starts)
-let products = [];
-let users = [];
-let lastUserId = 1000;
-let lastProductId = 1000;
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase client
+const supabaseUrl = 'https://nemnixxpjftakcgvkpvn.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lbW5peHhwamZ0YWtjZ3ZrcHZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI5MTc0NjksImV4cCI6MjA1ODQ5MzQ2OX0.l2naVD6XZeHo1x6rbw4mrBOOlCtkjqyxNi6evKM6EIM';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 exports.handler = async function(event, context) {
   try {
@@ -33,27 +33,39 @@ exports.handler = async function(event, context) {
       
       console.log(`Login attempt: ${email}`);
       
-      // Find existing user or create a mock one
-      const user = {
-        id: lastUserId++,
-        uuid: `mock-${Date.now()}`,
-        email: email || "user@example.com",
-        username: email ? email.split('@')[0] : "user",
-        fullName: email ? email.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ') : "User",
-        avatar: null,
-        isSeller: true,
-        isCollector: true,
-        createdAt: new Date().toISOString(),
-        password: password || "password"
-      };
-      
+      // Use Supabase auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        return {
+          statusCode: 401,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            error: authError.message,
+            success: false
+          })
+        };
+      }
+
+      // Get user profile data
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+
       return {
         statusCode: 200,
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
-          user: { ...user, password: undefined },
+          user: { ...authData.user, ...profileData },
           message: "Login successful" 
         })
       };
@@ -64,21 +76,51 @@ exports.handler = async function(event, context) {
       
       console.log(`Registration attempt: ${email}`);
       
-      // Create a new mock user
-      const user = {
-        id: lastUserId++,
-        uuid: `user-${Date.now()}`,
-        email: email || "user@example.com",
-        username: username || (email ? email.split('@')[0] : "user"),
-        fullName: fullName || (email ? email.split('@')[0] : "User"),
-        avatar: null,
-        isSeller: isSeller !== undefined ? isSeller : true,
-        isCollector: isCollector !== undefined ? isCollector : true,
-        createdAt: new Date().toISOString(),
-        password: password || "password"
-      };
-      
-      users.push(user);
+      // Create user in Supabase auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            error: authError.message,
+            success: false
+          })
+        };
+      }
+
+      // Create user profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: authData.user.id,
+          username,
+          full_name: fullName,
+          is_seller: isSeller,
+          is_collector: isCollector,
+          avatar_url: null,
+        }])
+        .select()
+        .single();
+
+      if (profileError) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            error: profileError.message,
+            success: false
+          })
+        };
+      }
       
       return {
         statusCode: 200,
@@ -86,7 +128,7 @@ exports.handler = async function(event, context) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
-          user: { ...user, password: undefined },
+          user: { ...authData.user, ...profileData },
           message: "Registration successful" 
         })
       };
@@ -111,13 +153,35 @@ exports.handler = async function(event, context) {
     if (method === 'GET' && path === '/products') {
       console.log('Fetching products');
       
+      // Get products from Supabase
+      const { data: products, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          seller:profiles(*)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            error: error.message,
+            success: false
+          })
+        };
+      }
+      
       return {
         statusCode: 200,
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          products: products
+          products
         })
       };
     }
@@ -126,16 +190,32 @@ exports.handler = async function(event, context) {
     if (method === 'POST' && path === '/products') {
       console.log('Creating product with data:', body);
       
-      // Create a new product with incremented ID
-      const product = {
-        id: lastProductId++,
-        ...body,
-        createdAt: new Date().toISOString(),
-        views: 0
-      };
-      
-      // Add to products array
-      products.push(product);
+      // Create product in Supabase
+      const { data: product, error } = await supabase
+        .from('products')
+        .insert([{
+          ...body,
+          created_at: new Date().toISOString(),
+          views: 0
+        }])
+        .select(`
+          *,
+          seller:profiles(*)
+        `)
+        .single();
+
+      if (error) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            error: error.message,
+            success: false
+          })
+        };
+      }
       
       return {
         statusCode: 201,
@@ -155,37 +235,24 @@ exports.handler = async function(event, context) {
       const productId = parseInt(path.split('/')[2]);
       console.log('Deleting product:', productId);
       
-      // Find and remove the product
-      const index = products.findIndex(p => p.id === productId);
-      if (index !== -1) {
-        products.splice(index, 1);
+      // Delete product from Supabase
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+
+      if (error) {
         return {
-          statusCode: 200,
+          statusCode: 400,
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            success: true,
-            message: "Product deleted successfully"
-          })
-        };
-      } else {
-        return {
-          statusCode: 404,
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            success: false,
-            message: "Product not found"
+          body: JSON.stringify({ 
+            error: error.message,
+            success: false
           })
         };
       }
-    }
-    
-    // Handle conversations endpoint
-    if (method === 'GET' && path.startsWith('/conversations')) {
-      console.log('Fetching conversations');
       
       return {
         statusCode: 200,
@@ -193,20 +260,59 @@ exports.handler = async function(event, context) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          conversations: []
+          success: true,
+          message: "Product deleted successfully"
+        })
+      };
+    }
+    
+    // Handle conversations endpoint
+    if (method === 'GET' && path.startsWith('/conversations')) {
+      console.log('Fetching conversations');
+      
+      // Get conversations from Supabase
+      const { data: conversations, error } = await supabase
+        .from('conversations')
+        .select(`
+          *,
+          product:products(*),
+          buyer:profiles(*),
+          seller:profiles(*)
+        `);
+
+      if (error) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            error: error.message,
+            success: false
+          })
+        };
+      }
+      
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          conversations
         })
       };
     }
     
     // Default response for unhandled paths
     return {
-      statusCode: 200,
+      statusCode: 404,
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        message: `API endpoint processed: ${path}`,
-        success: true
+        error: 'Endpoint not found',
+        success: false
       })
     };
     
