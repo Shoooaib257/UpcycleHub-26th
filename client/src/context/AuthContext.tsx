@@ -168,55 +168,68 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             username: userData.username,
             is_seller: userData.isSeller,
             is_collector: userData.isCollector,
-          }
+          },
+          emailRedirectTo: window.location.origin + '/auth?view=login'
         }
       });
 
       if (authError) {
+        // Handle rate limit error specifically
+        if (authError.message?.includes('rate limit') || authError.status === 429) {
+          throw new Error(
+            "Too many signup attempts. Please wait a few minutes before trying again."
+          );
+        }
         throw authError;
       }
 
+      // For email confirmation flow, session might be null
       if (!session) {
-        throw new Error("No session returned after signup");
+        throw new Error(
+          "Please check your email for a confirmation link to complete your registration."
+        );
       }
 
-      // Set the session
+      // Set the session if we have it (email confirmation might be required)
       setSession(session);
 
-      // Create user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .insert([{
+      // Only create profile if we have a session (user was created successfully)
+      if (session) {
+        // Create user profile
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .insert([{
+            id: session.user.id,
+            username: userData.username,
+            full_name: userData.fullName,
+            is_seller: userData.isSeller,
+            is_collector: userData.isCollector,
+            avatar_url: null,
+          }])
+          .select()
+          .single();
+
+        if (profileError) {
+          console.error("Error creating profile:", profileError);
+          // Continue with basic user data
+        }
+
+        // Create user object
+        const userWithProfile: User = {
           id: session.user.id,
+          email: session.user.email || "",
           username: userData.username,
-          full_name: userData.fullName,
-          is_seller: userData.isSeller,
-          is_collector: userData.isCollector,
-          avatar_url: null,
-        }])
-        .select()
-        .single();
-
-      if (profileError) {
-        console.error("Error creating profile:", profileError);
-        // Continue with basic user data
+          fullName: userData.fullName,
+          avatar: null,
+          isSeller: userData.isSeller,
+          isCollector: userData.isCollector,
+          createdAt: new Date(session.user.created_at),
+          password: 'dummy-password' // Required by User type but never used
+        };
+        
+        setUser(userWithProfile);
+        localStorage.setItem("user", JSON.stringify(userWithProfile));
       }
-
-      // Create user object
-      const userWithProfile: User = {
-        id: session.user.id,
-        email: session.user.email || "",
-        username: userData.username,
-        fullName: userData.fullName,
-        avatar: null,
-        isSeller: userData.isSeller,
-        isCollector: userData.isCollector,
-        createdAt: new Date(session.user.created_at),
-        password: 'dummy-password' // Required by User type but never used
-      };
-      
-      setUser(userWithProfile);
-      localStorage.setItem("user", JSON.stringify(userWithProfile));
     } catch (error) {
       console.error("Signup error:", error);
       throw error;
