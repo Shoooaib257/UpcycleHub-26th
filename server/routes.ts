@@ -309,18 +309,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Product not found' });
       }
       
-      const imageData = insertProductImageSchema.parse({
-        ...req.body,
-        productId
-      });
+      // Make sure we're using the correct data structure from the request
+      let imageData;
+      try {
+        imageData = insertProductImageSchema.parse({
+          ...req.body,
+          productId
+        });
+      } catch (error) {
+        // Fallback for simpler format
+        if (req.body.url) {
+          imageData = {
+            productId,
+            url: req.body.url,
+            isMain: req.body.isMain === true || req.body.isMain === 'true'
+          };
+        } else {
+          throw error;
+        }
+      }
       
       const image = await storage.createProductImage(imageData);
       
       res.status(201).json({ image, message: 'Image added successfully' });
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error('Validation error:', error.errors);
         return res.status(400).json({ message: 'Invalid data', errors: error.errors });
       }
+      console.error('Error adding image:', error);
       res.status(500).json({ message: 'Failed to add image' });
     }
   });

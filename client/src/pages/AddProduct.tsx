@@ -91,32 +91,52 @@ const AddProduct = () => {
   // Create product mutation
   const createProduct = useMutation({
     mutationFn: async (values: ProductFormValues) => {
-      // Transform price from dollars to cents
-      const priceInCents = Math.round(parseFloat(values.price) * 100);
-      
-      // Create the product
-      const res = await apiRequest("POST", "/api/products", {
-        ...values,
-        price: priceInCents,
-        sellerId: user.id,
-      });
-      
-      const data = await res.json();
-      
-      // Upload images for the product
-      if (uploadedImages.length > 0) {
-        await Promise.all(
-          uploadedImages.map(async (image) => {
-            await apiRequest("POST", `/api/products/${data.product.id}/images`, {
-              url: image.url,
-              isMain: image.isMain,
-              productId: data.product.id,
-            });
-          })
-        );
+      try {
+        // Transform price from dollars to cents
+        const priceInCents = Math.round(parseFloat(values.price) * 100);
+        
+        // Create the product
+        const res = await apiRequest("POST", "/api/products", {
+          ...values,
+          price: priceInCents,
+          sellerId: user.id,
+        });
+        
+        const data = await res.json();
+        console.log("Product created successfully:", data);
+        
+        // Upload images for the product
+        if (uploadedImages.length > 0) {
+          const imagePromises = uploadedImages.map(async (image, index) => {
+            try {
+              console.log(`Uploading image ${index + 1}/${uploadedImages.length}:`, image.url.substring(0, 50) + "...");
+              
+              // Send the image data to the server
+              const imageRes = await apiRequest("POST", `/api/products/${data.product.id}/images`, {
+                url: image.url,
+                isMain: image.isMain,
+                productId: data.product.id,
+              });
+              
+              const imageData = await imageRes.json();
+              console.log(`Image ${index + 1} uploaded successfully:`, imageData);
+              return imageData;
+            } catch (imageError) {
+              console.error(`Failed to upload image ${index + 1}:`, imageError);
+              // Continue with other images even if one fails
+              return null;
+            }
+          });
+          
+          // Wait for all image uploads to complete
+          await Promise.all(imagePromises);
+        }
+        
+        return data;
+      } catch (error) {
+        console.error("Error creating product:", error);
+        throw error;
       }
-      
-      return data;
     },
     onSuccess: () => {
       toast({
@@ -128,6 +148,7 @@ const AddProduct = () => {
       navigate("/dashboard");
     },
     onError: (error: Error) => {
+      console.error("Error details:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to add product. Please try again.",

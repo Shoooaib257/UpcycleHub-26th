@@ -12,14 +12,27 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+// Check if we're in Netlify environment
+const isNetlify = typeof window !== 'undefined' && 
+  window.location.hostname.includes('netlify.app');
+
 // Simplified API request function
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  // Ensure URL starts with API_URL
-  const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+  // Handle URL path for Netlify deployment
+  let fullUrl;
+  if (isNetlify && url.startsWith('/api/')) {
+    // For Netlify, the API routes are served from /.netlify/functions/api
+    // Remove the leading /api to prevent duplication
+    const pathWithoutApi = url.replace(/^\/api/, '');
+    fullUrl = `/.netlify/functions/api${pathWithoutApi}`;
+  } else {
+    // For local development or URLs that don't start with /api/
+    fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+  }
   
   const res = await fetch(fullUrl, {
     method,
@@ -41,7 +54,15 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> = (options) => {
   return async ({ queryKey }) => {
     const url = queryKey[0] as string;
-    const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+    
+    // Handle URL path for Netlify deployment similar to apiRequest function
+    let fullUrl;
+    if (isNetlify && typeof url === 'string' && url.startsWith('/api/')) {
+      const pathWithoutApi = url.replace(/^\/api/, '');
+      fullUrl = `/.netlify/functions/api${pathWithoutApi}`;
+    } else {
+      fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+    }
     
     const res = await fetch(fullUrl, {
       credentials: "include",

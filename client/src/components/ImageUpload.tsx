@@ -36,11 +36,12 @@ const ImageUpload = ({
     setIsUploading(true);
     try {
       // Try to upload to Supabase first
+      console.log("Attempting Supabase upload...");
       const imageUrl = await uploadProductImage(file, productId);
       
       if (imageUrl) {
         // Successful upload to Supabase
-        console.log("Supabase upload successful");
+        console.log("Supabase upload successful:", imageUrl.substring(0, 50) + "...");
         onImageUploaded(imageUrl, isMainUpload);
         // Clear the file input
         if (fileInputRef.current) {
@@ -49,7 +50,9 @@ const ImageUpload = ({
       } else {
         console.log("Supabase upload failed, trying server upload...");
         
-        // If Supabase fails, try the server upload first
+        // If Supabase fails, try the server upload
+        let serverUploadSuccess = false;
+        
         try {
           // Create a FormData object to send the file
           const formData = new FormData();
@@ -58,6 +61,7 @@ const ImageUpload = ({
           formData.append('isMain', isMainUpload.toString());
           
           // Try uploading to our server endpoint
+          console.log("Attempting server file upload...");
           const response = await fetch('/api/products/upload-image', {
             method: 'POST',
             body: formData,
@@ -65,18 +69,22 @@ const ImageUpload = ({
           
           if (response.ok) {
             const data = await response.json();
-            console.log("Server upload successful", data);
+            console.log("Server upload successful:", data);
             onImageUploaded(data.imageUrl, isMainUpload);
-            return;
+            serverUploadSuccess = true;
+          } else {
+            console.error("Server upload failed with status:", response.status);
+            const errorText = await response.text();
+            console.error("Error details:", errorText);
           }
         } catch (serverError) {
-          console.error("Server upload failed:", serverError);
+          console.error("Server upload failed with exception:", serverError);
         }
         
-        // If server upload also fails, try uploading the preview data URL as last resort
-        console.log("Trying data URL upload as last resort");
-        if (preview) {
+        // If server upload also fails, try uploading the preview data URL
+        if (!serverUploadSuccess && preview) {
           try {
+            console.log("Attempting data URL upload...");
             const response = await fetch('/api/products/upload-data-url', {
               method: 'POST',
               headers: {
@@ -91,17 +99,23 @@ const ImageUpload = ({
             
             if (response.ok) {
               const data = await response.json();
-              console.log("Data URL upload successful", data);
+              console.log("Data URL upload successful:", data);
               onImageUploaded(data.imageUrl, isMainUpload);
-              return;
+              serverUploadSuccess = true;
+            } else {
+              console.error("Data URL upload failed with status:", response.status);
+              const errorText = await response.text();
+              console.error("Error details:", errorText);
             }
           } catch (dataUrlError) {
-            console.error("Data URL upload failed:", dataUrlError);
+            console.error("Data URL upload failed with exception:", dataUrlError);
           }
           
           // If all server methods fail, use the data URL directly as absolute last resort
-          console.log("All server methods failed, using data URL directly");
-          onImageUploaded(preview, isMainUpload);
+          if (!serverUploadSuccess) {
+            console.log("All server methods failed, using data URL directly");
+            onImageUploaded(preview, isMainUpload);
+          }
         }
       }
     } catch (error) {
