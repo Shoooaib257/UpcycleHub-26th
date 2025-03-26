@@ -1,5 +1,9 @@
 // Simple Netlify function in CommonJS format to avoid build issues
 
+// In-memory user storage (will reset on function cold starts)
+const users = [];
+let lastUserId = 1000;
+
 // Netlify Function handler
 exports.handler = async function(event, context) {
   // Log out the event to help with debugging
@@ -29,25 +33,110 @@ exports.handler = async function(event, context) {
       }
     }
     
+    // Handle user registration/signup
+    if (event.httpMethod === 'POST' && path === '/auth/register') {
+      console.log('Handling registration request');
+      
+      const { email, password, name } = requestBody;
+      
+      if (!email) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: 'Email is required'
+          })
+        };
+      }
+      
+      // Check if user already exists
+      const existingUser = users.find(user => user.email === email);
+      if (existingUser) {
+        console.log(`User with email ${email} already exists`);
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: 'User with this email already exists'
+          })
+        };
+      }
+      
+      // Create new user
+      const userId = ++lastUserId;
+      const newUser = {
+        id: userId,
+        email,
+        password, // In a real app, this would be hashed
+        name: name || email.split('@')[0],
+        isSeller: true,
+        createdAt: new Date().toISOString()
+      };
+      
+      users.push(newUser);
+      console.log(`Created new user: ${email}, total users: ${users.length}`);
+      
+      // Return user without password
+      const { password: _, ...userWithoutPassword } = newUser;
+      return {
+        statusCode: 201,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user: userWithoutPassword
+        })
+      };
+    }
+    
     // Handle login requests
     if (event.httpMethod === 'POST' && path === '/auth/login') {
       console.log('Handling login request with mock response');
-      const { email } = requestBody;
       
-      // Create mock user response
+      // Extract email and password from request body
+      // But accept any credentials - don't validate against previous signups
+      let email = "user@example.com";
+      
+      if (requestBody && requestBody.email) {
+        email = requestBody.email;
+        console.log(`Login attempt with email: ${email}`);
+      } else {
+        console.log('No email provided, using default');
+      }
+      
+      // Check if the user exists in our in-memory store
+      const existingUser = users.find(user => user.email === email);
+      let userResponse;
+      
+      if (existingUser) {
+        // User exists, return their stored data
+        console.log(`Found existing user: ${email}`);
+        const { password: _, ...userWithoutPassword } = existingUser;
+        userResponse = userWithoutPassword;
+      } else {
+        // No user found, create a fake one for this session
+        console.log(`No existing user found for ${email}, creating fake login`);
+        userResponse = {
+          id: 1000,
+          email: email,
+          name: email.split('@')[0] || "Test User",
+          isSeller: true,
+          createdAt: new Date().toISOString()
+        };
+      }
+      
+      // Always return successful login
       return {
         statusCode: 200,
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          user: {
-            id: 1000,
-            email: email || "user@example.com",
-            name: "Test User",
-            isSeller: true,
-            createdAt: new Date().toISOString()
-          }
+          user: userResponse
         })
       };
     }
