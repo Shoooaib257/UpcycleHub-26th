@@ -31,7 +31,7 @@ export async function apiRequest(
   if (isNetlify) {
     // For Netlify, remove /api prefix when going to functions
     const pathWithoutApi = url.replace(/^\/api/, '');
-    fullUrl = `/.netlify/functions/api${pathWithoutApi}`;
+    fullUrl = `/.netlify/functions/api-direct${pathWithoutApi}`;
     console.log(`Netlify API request: ${method} ${url} -> ${fullUrl}`);
   } else {
     // For local development

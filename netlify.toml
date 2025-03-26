@@ -1,16 +1,16 @@
 [build]
   command = "npm run build"
   publish = "dist/public"
-  functions = "netlify/functions/built"
+  functions = "netlify/functions"
 
 [functions]
-  directory = "netlify/functions/built"
-  node_bundler = "esbuild"
+  directory = "netlify/functions"
+  node_bundler = "none"
 
 # API requests go to the function
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  to = "/.netlify/functions/api-direct/:splat"
   status = 200
   force = true
 
