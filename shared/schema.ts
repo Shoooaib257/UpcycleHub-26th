@@ -4,8 +4,7 @@ import { z } from "zod";
 
 // User table with role information
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  uuid: uuid("uuid").notNull().defaultRandom(),
+  id: uuid("id").primaryKey(),
   username: text("username").notNull().unique(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
@@ -26,7 +25,7 @@ export const products = pgTable("products", {
   category: text("category").notNull(),
   condition: text("condition").notNull(),
   location: text("location").notNull(),
-  sellerId: integer("seller_id").notNull().references(() => users.id),
+  sellerId: uuid("seller_id").notNull().references(() => users.id),
   status: text("status").notNull().default("active"),
   views: integer("views").default(0),
   createdAt: timestamp("created_at").defaultNow(),
@@ -45,8 +44,8 @@ export const productImages = pgTable("product_images", {
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").notNull().references(() => products.id),
-  buyerId: integer("buyer_id").notNull().references(() => users.id),
-  sellerId: integer("seller_id").notNull().references(() => users.id),
+  buyerId: uuid("buyer_id").notNull().references(() => users.id),
+  sellerId: uuid("seller_id").notNull().references(() => users.id),
   lastMessage: text("last_message"),
   lastMessageTime: timestamp("last_message_time"),
   createdAt: timestamp("created_at").defaultNow(),

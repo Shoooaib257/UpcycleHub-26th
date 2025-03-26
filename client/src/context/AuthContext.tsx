@@ -50,8 +50,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else if (session?.user) {
           const sessionEmail = session.user.email || "";
           const mockUser: MockUser = {
-            id: parseInt(session.user.id) || Math.floor(Math.random() * 1000) + 1000,
-            uuid: session.user.id,
+            id: session.user.id, // Use the UUID directly as ID
             email: sessionEmail,
             username: session.user.user_metadata?.username || sessionEmail.split('@')[0] || 'user',
             fullName: session.user.user_metadata?.full_name || sessionEmail.split('@')[0] || 'User',
@@ -107,8 +106,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // If no stored user matches, create a mock user without hitting Supabase
       console.log("Creating mock user for login");
       const mockUser: User = {
-        id: Math.floor(Math.random() * 1000) + 1000,
-        uuid: `mock-${Date.now()}`,
+        id: crypto.randomUUID(), // Generate a proper UUID
         email: email,
         username: email.split('@')[0],
         fullName: email.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' '),
@@ -137,8 +135,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       // Create a mock user without hitting Supabase
       const mockUser: User = {
-        id: Math.floor(Math.random() * 1000) + 1000,
-        uuid: `mock-${Date.now()}`,
+        id: crypto.randomUUID(), // Generate a proper UUID
         email: userData.email,
         username: userData.username,
         fullName: userData.fullName,

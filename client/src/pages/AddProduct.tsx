@@ -54,6 +54,7 @@ const productFormSchema = insertProductSchema.extend({
     (value) => value !== "select_condition" && value.trim() !== "",
     "Please select a valid condition"
   ),
+  sellerId: z.string().uuid(),
 });
 
 // Transform the form values to the API format
@@ -75,7 +76,7 @@ const AddProduct = () => {
       category: "",
       condition: "",
       location: "",
-      sellerId: 0,
+      sellerId: "",
       status: "active",
     },
   });
