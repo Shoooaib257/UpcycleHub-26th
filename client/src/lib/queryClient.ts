@@ -1,5 +1,6 @@
 // Import only what we need to reduce bundle size
 import { QueryClient } from "@tanstack/react-query";
+import { getSupabase } from "./supabase";
 
 // Get API URL from environment variable or use a default for local development
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -42,9 +43,21 @@ export async function apiRequest(
   console.log(`Making ${method} request to ${fullUrl}${data ? ' with data' : ''}`);
   
   try {
+    // Get the current session
+    const supabase = getSupabase();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    // Prepare headers
+    const headers = Object.assign(
+      {},
+      data ? { "Content-Type": "application/json" } : null,
+      token ? { "Authorization": `Bearer ${token}` } : null
+    );
+
     const res = await fetch(fullUrl, {
       method,
-      headers: data ? { "Content-Type": "application/json" } : {},
+      headers,
       body: data ? JSON.stringify(data) : undefined,
       credentials: "include",
     });
@@ -75,6 +88,11 @@ export const getQueryFn: <T>(options: {
   return async ({ queryKey }) => {
     const url = queryKey[0] as string;
     
+    // Get the current session
+    const supabase = getSupabase();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    
     // Handle URL path for Netlify deployment similar to apiRequest function
     let fullUrl;
     if (isNetlify && typeof url === 'string' && url.startsWith('/api/')) {
@@ -86,6 +104,7 @@ export const getQueryFn: <T>(options: {
     
     const res = await fetch(fullUrl, {
       credentials: "include",
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
     });
 
     if (options.on401 === "returnNull" && res.status === 401) {

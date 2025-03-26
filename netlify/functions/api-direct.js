@@ -3,7 +3,6 @@ const { createClient } = require('@supabase/supabase-js');
 // Initialize Supabase client
 const supabaseUrl = 'https://nemnixxpjftakcgvkpvn.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lbW5peHhwamZ0YWtjZ3ZrcHZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI5MTc0NjksImV4cCI6MjA1ODQ5MzQ2OX0.l2naVD6XZeHo1x6rbw4mrBOOlCtkjqyxNi6evKM6EIM';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 exports.handler = async function(event, context) {
   try {
@@ -26,6 +25,19 @@ exports.handler = async function(event, context) {
         console.error('Error parsing request body:', e);
       }
     }
+
+    // Get auth token from headers
+    const authHeader = event.headers.authorization || '';
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Create a new Supabase client with the user's session
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : ''
+        }
+      }
+    });
     
     // Handle auth endpoints
     if (method === 'POST' && path === '/auth/login') {
@@ -189,6 +201,21 @@ exports.handler = async function(event, context) {
     // Handle product creation
     if (method === 'POST' && path === '/products') {
       console.log('Creating product with data:', body);
+      
+      // Check if user is authenticated
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        return {
+          statusCode: 401,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            error: 'Authentication required',
+            success: false
+          })
+        };
+      }
       
       // Transform the data to match Supabase column names
       const productData = {
