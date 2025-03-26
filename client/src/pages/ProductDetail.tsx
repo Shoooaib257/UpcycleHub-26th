@@ -17,11 +17,16 @@ const ProductDetail = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   
   // Fetch product details
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: [`/api/products/${id}`],
     queryFn: async () => {
-      const res = await apiRequest('GET', `/api/products/${id}`, undefined);
-      return res.json();
+      try {
+        const res = await apiRequest('GET', `/api/products/${id}`, undefined);
+        return res.json();
+      } catch (error) {
+        console.error('Error fetching product:', error);
+        throw error;
+      }
     },
   });
 
@@ -41,7 +46,7 @@ const ProductDetail = () => {
   });
 
   // Create conversation mutation
-  const createConversation = useMutation({
+  const { mutate: startConversation, isPending } = useMutation({
     mutationFn: async () => {
       if (!user) {
         throw new Error("You must be logged in to contact the seller");
@@ -82,7 +87,7 @@ const ProductDetail = () => {
   });
 
   const handleContactSeller = () => {
-    createConversation.mutate();
+    startConversation();
   };
   
   const product = data?.product;
@@ -94,7 +99,7 @@ const ProductDetail = () => {
     ? images[selectedImageIndex]?.url
     : "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-1.2.1&auto=format&fit=crop&w=900&q=80";
   
-  if (isLoading) {
+  if (isLoading || isLoadingSeller) {
     return (
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="animate-pulse">
@@ -135,7 +140,7 @@ const ProductDetail = () => {
     );
   }
 
-  if (!product) {
+  if (error || !product) {
     return (
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-2xl font-bold text-neutral-900">Product not found</h2>
@@ -238,9 +243,9 @@ const ProductDetail = () => {
             <Button 
               className="flex-1 bg-primary hover:bg-emerald-700 text-white py-3 px-6 rounded-md font-medium"
               onClick={handleContactSeller}
-              disabled={createConversation.isPending || user?.id === product.sellerId}
+              disabled={isPending || user?.id === product.sellerId}
             >
-              {createConversation.isPending 
+              {isPending 
                 ? "Connecting..." 
                 : user?.id === product.sellerId
                   ? "Your Listing"
