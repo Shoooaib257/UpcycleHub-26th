@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
@@ -51,10 +51,35 @@ const SellerDashboard = () => {
   const { toast } = useToast();
   const [productToDelete, setProductToDelete] = useState<number | null>(null);
 
-  // Redirect if not a seller
-  if (user && !user.isSeller) {
-    navigate("/");
-    return null;
+  // Redirect if not logged in
+  useEffect(() => {
+    if (!user) {
+      navigate("/auth?view=login");
+      return;
+    }
+    
+    // Redirect if not a seller
+    if (user && !user.isSeller) {
+      navigate("/");
+      return;
+    }
+  }, [user, navigate]);
+
+  // If still checking auth status, show loading
+  if (!user) {
+    return (
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+            <div className="h-32 bg-gray-200 rounded"></div>
+            <div className="h-32 bg-gray-200 rounded"></div>
+            <div className="h-32 bg-gray-200 rounded"></div>
+          </div>
+          <div className="h-64 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    );
   }
 
   // Fetch seller products

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
@@ -64,37 +64,54 @@ const AddProduct = () => {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [uploadedImages, setUploadedImages] = useState<{ url: string; isMain: boolean }[]>([]);
+  const [form, setForm] = useState<any>(null);
 
   // Redirect if not logged in or not a seller
-  if (!user) {
-    navigate("/");
-    return null;
-  }
+  useEffect(() => {
+    if (!user) {
+      navigate("/auth?view=login");
+      return;
+    }
 
-  if (!user.isSeller) {
-    toast({
-      title: "Not authorized",
-      description: "You need a seller account to list products.",
-      variant: "destructive",
-    });
-    navigate("/");
-    return null;
-  }
+    if (user && !user.isSeller) {
+      toast({
+        title: "Not authorized",
+        description: "You need a seller account to list products.",
+        variant: "destructive",
+      });
+      navigate("/");
+      return;
+    }
 
-  // Initialize the form with default values
-  const form = useForm<ProductFormValues>({
-    resolver: zodResolver(productFormSchema),
-    defaultValues: {
-      title: "",
-      description: "",
-      price: "",
-      category: "",
-      condition: "",
-      location: "",
-      sellerId: user.id,
-      status: "active",
-    },
-  });
+    // Initialize the form with default values once we know the user is logged in
+    setForm(useForm<ProductFormValues>({
+      resolver: zodResolver(productFormSchema),
+      defaultValues: {
+        title: "",
+        description: "",
+        price: "",
+        category: "",
+        condition: "",
+        location: "",
+        sellerId: user.id,
+        status: "active",
+      },
+    }));
+  }, [user, navigate, toast]);
+
+  // If still checking auth status or initializing form, show loading
+  if (!user || !form) {
+    return (
+      <div className="max-w-3xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/3 mb-6"></div>
+          <div className="h-64 bg-gray-200 rounded mb-4"></div>
+          <div className="h-32 bg-gray-200 rounded mb-4"></div>
+          <div className="h-12 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    );
+  }
 
   // Create product mutation
   const createProduct = useMutation({

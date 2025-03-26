@@ -17,6 +17,7 @@ const AddProduct = lazy(() => import("@/pages/AddProduct"));
 const Messages = lazy(() => import("@/pages/Messages"));
 const About = lazy(() => import("@/pages/About"));
 const NotFound = lazy(() => import("@/pages/not-found"));
+const Auth = lazy(() => import("@/pages/Auth"));
 
 // Loading fallback component for code splitting
 const PageSkeleton = () => (
@@ -42,6 +43,7 @@ function Router() {
         <Route path="/messages" component={Messages} />
         <Route path="/messages/:conversationId" component={Messages} />
         <Route path="/about" component={About} />
+        <Route path="/auth" component={Auth} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
