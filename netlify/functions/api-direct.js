@@ -190,14 +190,19 @@ exports.handler = async function(event, context) {
     if (method === 'POST' && path === '/products') {
       console.log('Creating product with data:', body);
       
+      // Transform the data to match Supabase column names
+      const productData = {
+        ...body,
+        seller_id: body.sellerId, // Transform sellerId to seller_id
+        created_at: new Date().toISOString(),
+        views: 0
+      };
+      delete productData.sellerId; // Remove the original sellerId
+      
       // Create product in Supabase
       const { data: product, error } = await supabase
         .from('products')
-        .insert([{
-          ...body,
-          created_at: new Date().toISOString(),
-          views: 0
-        }])
+        .insert([productData])
         .select(`
           *,
           seller:profiles(*)
@@ -205,6 +210,7 @@ exports.handler = async function(event, context) {
         .single();
 
       if (error) {
+        console.error('Error creating product:', error);
         return {
           statusCode: 400,
           headers: {
