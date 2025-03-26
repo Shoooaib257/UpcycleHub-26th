@@ -113,7 +113,7 @@ const AddProduct = () => {
   }
 
   // Create product mutation
-  const createProduct = useMutation({
+  const { mutate: createProductMutation, isPending } = useMutation({
     mutationFn: async (values: ProductFormValues) => {
       try {
         // Transform price from dollars to cents
@@ -220,7 +220,7 @@ const AddProduct = () => {
     }
     
     try {
-      createProduct.mutate(values);
+      createProductMutation(values);
     } catch (error) {
       console.error("Error caught in onSubmit:", error);
       toast({
@@ -444,16 +444,16 @@ const AddProduct = () => {
               type="button"
               variant="outline"
               onClick={() => navigate("/dashboard")}
-              disabled={createProduct.isPending}
+              disabled={isPending}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={createProduct.isPending}
+              disabled={isPending}
               className="min-w-[150px]"
             >
-              {createProduct.isPending ? (
+              {isPending ? (
                 <div className="flex items-center">
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

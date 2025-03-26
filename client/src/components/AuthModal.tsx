@@ -137,12 +137,12 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md" aria-describedby="auth-modal-description">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-center">
             Welcome to Upcycle Hub
           </DialogTitle>
-          <DialogDescription id="auth-modal-description">
+          <DialogDescription>
             Log in to your account or create a new one to start buying and selling.
           </DialogDescription>
         </DialogHeader>
