@@ -73,7 +73,7 @@ const Home = () => {
                     Browse Items
                   </Button>
                 </Link>
-                <Link href={user?.isSeller ? "/dashboard" : "/auth"}>
+                <Link href={user ? "/dashboard" : "/auth"}>
                   <Button variant="outline" className="flex items-center justify-center px-4 py-3 w-full border border-transparent text-base font-medium rounded-md shadow-sm text-neutral-700 bg-white hover:bg-neutral-50">
                     Start Selling
                   </Button>

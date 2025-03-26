@@ -89,22 +89,13 @@ const AddProduct = () => {
     }
   }, [user, form]);
 
-  // Redirect if not logged in or not a seller
+  // Redirect if not logged in
   useEffect(() => {
     if (!user) {
       navigate("/auth?view=login");
       return;
     }
-
-    if (user && !user.isSeller) {
-      toast({
-        title: "Not authorized",
-        description: "You need a seller account to list products.",
-        variant: "destructive",
-      });
-      navigate("/");
-      return;
-    }
+    // No longer need to check if user is a seller
   }, [user, navigate, toast]);
 
   // If still checking auth status, show loading

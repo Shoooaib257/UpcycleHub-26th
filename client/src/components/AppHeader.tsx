@@ -79,7 +79,7 @@ const AppHeader = () => {
               <Link href="/browse" className={`inline-flex items-center px-1 pt-1 border-b-2 ${isActive('/browse') ? 'border-primary text-neutral-900' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'} text-sm font-medium`}>
                 Browse
               </Link>
-              {user?.isSeller && (
+              {user && (
                 <Link href="/dashboard" className={`inline-flex items-center px-1 pt-1 border-b-2 ${isActive('/dashboard') ? 'border-primary text-neutral-900' : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'} text-sm font-medium`}>
                   Sell
                 </Link>
@@ -181,7 +181,7 @@ const AppHeader = () => {
             <Link href="/browse" className={`${isActive('/browse') ? 'bg-neutral-50 border-primary text-primary' : 'border-transparent text-neutral-500 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700'} block pl-3 pr-4 py-2 border-l-4 text-base font-medium`}>
               Browse
             </Link>
-            {user?.isSeller && (
+            {user && (
               <Link href="/dashboard" className={`${isActive('/dashboard') ? 'bg-neutral-50 border-primary text-primary' : 'border-transparent text-neutral-500 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700'} block pl-3 pr-4 py-2 border-l-4 text-base font-medium`}>
                 Sell
               </Link>

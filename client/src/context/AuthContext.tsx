@@ -94,6 +94,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const parsedUser = JSON.parse(savedUser);
         if (parsedUser.email === email) {
           console.log("Reusing stored user with matching email");
+          // Make sure the user has seller privileges
+          if (!parsedUser.isSeller) {
+            parsedUser.isSeller = true;
+            localStorage.setItem("user", JSON.stringify(parsedUser));
+          }
           setUser(parsedUser);
           return;
         }
@@ -108,7 +113,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         username: email.split('@')[0],
         fullName: email.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' '),
         avatar: null,
-        isSeller: false,
+        isSeller: true, // Always set to true
         isCollector: true,
         createdAt: new Date(),
         password: password // Include the password to satisfy the User type

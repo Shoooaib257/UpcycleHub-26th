@@ -58,11 +58,8 @@ const SellerDashboard = () => {
       return;
     }
     
-    // Redirect if not a seller
-    if (user && !user.isSeller) {
-      navigate("/");
-      return;
-    }
+    // No need to check if the user is a seller anymore
+    // as all logged-in users will have access to the dashboard
   }, [user, navigate]);
 
   // If still checking auth status, show loading
@@ -137,7 +134,7 @@ const SellerDashboard = () => {
   
   // Stats for dashboard cards
   const activeListings = products.filter(p => p.status === 'active').length;
-  const totalViews = products.reduce((sum, p) => sum + (p.views || 0), 0);
+  const totalViews = products.reduce((sum: number, p: any) => sum + (p.views || 0), 0);
   
   // For the active conversations stat, we would need to fetch conversations
   // Since we don't have that endpoint yet, we'll use a placeholder
