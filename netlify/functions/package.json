@@ -1,0 +1,9 @@
+{
+  "name": "netlify-functions",
+  "version": "1.0.0",
+  "description": "Netlify functions for UpcycleHub",
+  "main": "api-direct.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.7"
+  }
+} 
