@@ -7,4 +7,5 @@ esbuild.build({
   platform: 'node',
   target: 'node14',
   outfile: 'api-direct.js',
+  allowOverwrite: true,
 }).catch(() => process.exit(1)); 
