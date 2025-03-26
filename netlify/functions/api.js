@@ -13,9 +13,7 @@ export default async function handler(event, context) {
   console.log('Netlify function received event:', {
     httpMethod: event.httpMethod,
     path: event.path,
-    headers: event.headers,
-    queryStringParameters: event.queryStringParameters,
-    body: event.body ? (event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf-8') : event.body) : null
+    queryStringParameters: event.queryStringParameters
   });
   
   try {
@@ -32,7 +30,7 @@ export default async function handler(event, context) {
             ? Buffer.from(event.body, 'base64').toString('utf-8') 
             : event.body
         );
-        console.log('Request body:', requestBody);
+        console.log('Request body:', JSON.stringify(requestBody).substring(0, 200));
       } catch (e) {
         console.error('Error parsing request body:', e);
       }
@@ -52,7 +50,7 @@ export default async function handler(event, context) {
         body: JSON.stringify({
           user: {
             id: 1000,
-            email: email,
+            email: email || "user@example.com",
             name: "Test User",
             isSeller: true,
             createdAt: new Date().toISOString()
@@ -90,7 +88,7 @@ export default async function handler(event, context) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
-          message: 'Direct API endpoint for product creation', 
+          message: 'Product created successfully', 
           success: true,
           product: {
             id: Math.floor(Math.random() * 1000),
@@ -164,7 +162,7 @@ export default async function handler(event, context) {
     }
     // For other requests, provide a generic response
     else {
-      console.log('Handling generic request with mock response');
+      console.log('Handling generic request with mock response for:', path);
       return {
         statusCode: 200,
         headers: {
@@ -182,10 +180,12 @@ export default async function handler(event, context) {
     console.error('Error in Netlify function:', error);
     return {
       statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ 
         message: 'Internal server error', 
-        error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: error.message
       })
     };
   }
