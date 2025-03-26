@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { User } from "@shared/schema";
+import { Session } from "@supabase/supabase-js";
 
 type AuthContextType = {
   user: User | null;
+  session: Session | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: SignupData) => Promise<void>;
   logout: () => Promise<void>;
@@ -26,6 +28,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Check for existing user session on load
@@ -40,24 +43,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.log("Loaded user from localStorage:", parsedUser);
         }
 
-        // Try to get session from Supabase, but don't worry if it fails
+        // Try to get session from Supabase
         const supabase = getSupabase();
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        const { data: { session: supabaseSession }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
           console.error("Error getting session:", sessionError);
           // Continue with localStorage user if available
-        } else if (session?.user) {
-          const sessionEmail = session.user.email || "";
+        } else if (supabaseSession?.user) {
+          setSession(supabaseSession);
+          const sessionEmail = supabaseSession.user.email || "";
           const mockUser: MockUser = {
-            id: session.user.id, // Use the UUID directly as ID
+            id: supabaseSession.user.id, // Use the UUID directly as ID
             email: sessionEmail,
-            username: session.user.user_metadata?.username || sessionEmail.split('@')[0] || 'user',
-            fullName: session.user.user_metadata?.full_name || sessionEmail.split('@')[0] || 'User',
-            avatar: session.user.user_metadata?.avatar || null,
-            isSeller: session.user.user_metadata?.is_seller || false,
-            isCollector: session.user.user_metadata?.is_collector || true,
-            createdAt: new Date(session.user.created_at)
+            username: supabaseSession.user.user_metadata?.username || sessionEmail.split('@')[0] || 'user',
+            fullName: supabaseSession.user.user_metadata?.full_name || sessionEmail.split('@')[0] || 'User',
+            avatar: supabaseSession.user.user_metadata?.avatar || null,
+            isSeller: supabaseSession.user.user_metadata?.is_seller || false,
+            isCollector: supabaseSession.user.user_metadata?.is_collector || true,
+            createdAt: new Date(supabaseSession.user.created_at)
           };
           
           // Add a dummy password since the User type expects it
@@ -79,8 +83,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     checkUser();
     
+    // Set up session change listener
+    const supabase = getSupabase();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
     return () => {
-      // Cleanup
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -179,7 +191,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, session, login, signup, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

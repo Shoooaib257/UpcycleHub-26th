@@ -20,60 +20,67 @@ const isNetlify = typeof window !== 'undefined' &&
 
 console.log(`Running in ${isNetlify ? 'Netlify' : 'development'} environment`);
 
-// Simplified API request function
-export async function apiRequest(
-  method: string,
-  url: string,
-  data?: unknown | undefined,
-): Promise<Response> {
-  // Handle URL path for Netlify deployment
-  let fullUrl;
-  
-  if (isNetlify) {
-    // For Netlify, remove /api prefix when going to functions
-    const pathWithoutApi = url.replace(/^\/api/, '');
-    fullUrl = `/.netlify/functions/api-direct${pathWithoutApi}`;
-    console.log(`Netlify API request: ${method} ${url} -> ${fullUrl}`);
-  } else {
-    // For local development
-    fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
-    console.log(`Development API request: ${method} ${fullUrl}`);
+// Create a client
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      retry: 1,
+    },
+  },
+});
+
+// Helper function to get API URL
+const getApiUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
   }
   
-  console.log(`Making ${method} request to ${fullUrl}${data ? ' with data' : ''}`);
+  // For Netlify, use the function URL
+  return '/.netlify/functions/api-direct';
+};
+
+// Helper function to get auth token
+const getAuthToken = async () => {
+  const supabase = getSupabase();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token;
+};
+
+// Generic API request function
+export const apiRequest = async <T>(
+  endpoint: string,
+  { data, method = "GET" }: { data?: any; method?: string } = {}
+): Promise<T> => {
+  const token = await getAuthToken();
   
-  try {
-    // Get the current session
-    const supabase = getSupabase();
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-
-    // Prepare headers
-    const headers = Object.assign(
-      {},
-      data ? { "Content-Type": "application/json" } : null,
-      token ? { "Authorization": `Bearer ${token}` } : null
-    );
-
-    const res = await fetch(fullUrl, {
-      method,
-      headers,
-      body: data ? JSON.stringify(data) : undefined,
-      credentials: "include",
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`API Error (${res.status}): ${errorText}`);
-      throw new Error(`${res.status}: ${errorText || res.statusText}`);
-    }
-    
-    return res;
-  } catch (error) {
-    console.error(`API Request failed: ${error}`);
-    throw error;
+  const headers: Record<string, string> = {};
+  if (data) {
+    headers["Content-Type"] = "application/json";
   }
-}
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const config: RequestInit = {
+    method,
+    headers,
+    credentials: "include",
+  };
+
+  if (data) {
+    config.body = JSON.stringify(data);
+  }
+
+  const response = await fetch(`${getApiUrl()}${endpoint}`, config);
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || response.statusText);
+  }
+
+  return response.json();
+};
 
 // Minimal type definition for behavior on 401 responses
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -115,13 +122,3 @@ export const getQueryFn: <T>(options: {
     return await res.json();
   };
 };
-
-// Create a query client with default options
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    },
-  },
-});

@@ -149,14 +149,50 @@ exports.handler = async function(event, context) {
     if (method === 'GET' && path === '/auth/me') {
       console.log('Handling auth/me request');
       
-      // Return null to indicate not logged in
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            user: null
+          })
+        };
+      }
+
+      // Get user profile data
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            user: null
+          })
+        };
+      }
+
       return {
         statusCode: 200,
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          user: null
+          user: {
+            ...session.user,
+            ...profile
+          }
         })
       };
     }

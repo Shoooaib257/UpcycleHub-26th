@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { insertProductSchema } from "@shared/schema";
+import { insertProductSchema, Product, ProductImage } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,6 +60,16 @@ const productFormSchema = insertProductSchema.extend({
 // Transform the form values to the API format
 type ProductFormValues = z.infer<typeof productFormSchema> & { price: string };
 
+type CreateProductResponse = {
+  product: Product;
+  message: string;
+};
+
+type CreateProductImageResponse = {
+  image: ProductImage;
+  message: string;
+};
+
 const AddProduct = () => {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -92,23 +102,26 @@ const AddProduct = () => {
       const priceInCents = Math.round(parseFloat(values.price) * 100);
       
       // Create the product
-      const res = await apiRequest("POST", "/api/products", {
-        ...values,
-        price: priceInCents,
-        sellerId: user.id,
+      const data = await apiRequest<CreateProductResponse>("/products", {
+        method: "POST",
+        data: {
+          ...values,
+          price: priceInCents,
+          sellerId: user.id,
+        },
       });
-      
-      const data = await res.json();
       
       // Handle image uploads if needed
       if (uploadedImages.length > 0 && data.product?.id) {
         const imagePromises = uploadedImages.map(async (image) => {
-          const imageRes = await apiRequest("POST", `/api/products/${data.product.id}/images`, {
-            url: image.url,
-            isMain: image.isMain,
-            productId: data.product.id,
+          return apiRequest<CreateProductImageResponse>(`/products/${data.product.id}/images`, {
+            method: "POST",
+            data: {
+              url: image.url,
+              isMain: image.isMain,
+              productId: data.product.id,
+            },
           });
-          return imageRes.json();
         });
         
         await Promise.all(imagePromises);
@@ -122,8 +135,8 @@ const AddProduct = () => {
         description: "Your item has been listed successfully.",
       });
       
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products/seller"] });
+      queryClient.invalidateQueries({ queryKey: ["/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/products/seller"] });
       
       navigate("/dashboard");
     },
