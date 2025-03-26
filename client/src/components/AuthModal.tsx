@@ -43,9 +43,8 @@ const signupSchema = z.object({
   username: z.string().min(3, { message: "Username must be at least 3 characters" }),
   email: z.string().email({ message: "Please enter a valid email address" }),
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
-  accountType: z.enum(["seller", "collector", "both"], {
-    required_error: "Please select an account type",
-  }),
+  isSeller: z.boolean().default(false),
+  isCollector: z.boolean().default(true),
   terms: z.literal(true, {
     errorMap: () => ({ message: "You must accept the terms and conditions" }),
   }),
@@ -58,6 +57,7 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
   const [activeTab, setActiveTab] = useState<string>(initialView);
   const { login, signup } = useAuth();
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
 
   // Login form
   const loginForm = useForm<LoginFormValues>({
@@ -77,54 +77,61 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
       username: "",
       email: "",
       password: "",
-      accountType: "both",
+      isSeller: false,
+      isCollector: true,
       terms: false,
     },
   });
 
-  const handleLoginSubmit = async (data: LoginFormValues) => {
+  const handleLoginSubmit = async (values: z.infer<typeof loginSchema>) => {
     try {
-      await login(data.email, data.password);
+      setIsLoading(true);
+      await login(values.email, values.password);
       toast({
         title: "Login successful",
-        description: "Welcome back to Upcycle Hub!",
+        description: "You have been logged in successfully.",
       });
       onClose();
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Login error:", error);
       toast({
         title: "Login failed",
-        description: (error as Error).message || "Invalid credentials. Please try again.",
+        description: error.message || "An error occurred during login.",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSignupSubmit = async (data: SignupFormValues) => {
+  const handleSignupSubmit = async (values: z.infer<typeof signupSchema>) => {
     try {
-      // Transform account type to boolean flags
-      const isSeller = data.accountType === "seller" || data.accountType === "both";
-      const isCollector = data.accountType === "collector" || data.accountType === "both";
-
+      setIsLoading(true);
+      
       await signup({
-        fullName: data.fullName,
-        username: data.username,
-        email: data.email,
-        password: data.password,
-        isSeller,
-        isCollector,
+        email: values.email,
+        password: values.password,
+        fullName: values.fullName,
+        username: values.username,
+        isSeller: values.isSeller,
+        isCollector: values.isCollector,
       });
       
       toast({
-        title: "Registration successful",
-        description: "Your account has been created!",
+        title: "Sign up successful",
+        description: "Your account has been created successfully.",
       });
+      
       onClose();
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Signup error:", error);
       toast({
-        title: "Registration failed",
-        description: (error as Error).message || "There was a problem creating your account.",
+        title: "Sign up failed",
+        description: error.message || "An error occurred during sign up.",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -198,8 +205,8 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
                   </a>
                 </div>
                 
-                <Button type="submit" className="w-full" disabled={loginForm.formState.isSubmitting}>
-                  {loginForm.formState.isSubmitting ? "Signing in..." : "Sign in"}
+                <Button type="submit" className="w-full" disabled={loginForm.formState.isSubmitting || isLoading}>
+                  {isLoading ? "Signing in..." : (loginForm.formState.isSubmitting ? "Signing in..." : "Sign in")}
                 </Button>
               </form>
             </Form>
@@ -267,23 +274,42 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
                 
                 <FormField
                   control={signupForm.control}
-                  name="accountType"
+                  name="isSeller"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Account Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select account type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="seller">Seller</SelectItem>
-                          <SelectItem value="collector">Collector</SelectItem>
-                          <SelectItem value="both">Both Seller & Collector</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
+                    <FormItem className="flex flex-row items-start space-x-2 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel className="text-sm">
+                          I am a seller
+                        </FormLabel>
+                        <FormMessage />
+                      </div>
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={signupForm.control}
+                  name="isCollector"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-2 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel className="text-sm">
+                          I am a collector
+                        </FormLabel>
+                        <FormMessage />
+                      </div>
                     </FormItem>
                   )}
                 />
@@ -312,8 +338,8 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
                   )}
                 />
                 
-                <Button type="submit" className="w-full" disabled={signupForm.formState.isSubmitting}>
-                  {signupForm.formState.isSubmitting ? "Creating Account..." : "Create Account"}
+                <Button type="submit" className="w-full" disabled={signupForm.formState.isSubmitting || isLoading}>
+                  {isLoading ? "Creating Account..." : (signupForm.formState.isSubmitting ? "Creating Account..." : "Create Account")}
                 </Button>
               </form>
             </Form>
