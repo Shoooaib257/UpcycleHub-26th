@@ -244,96 +244,89 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.removeItem("supabase.auth.token");
       sessionStorage.removeItem("supabase.auth.token");
 
-      // Add a small delay before signup attempt
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Check if email already exists
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('email', userData.email)
+        .single();
 
-      // Create user with Supabase auth with retry logic
-      let retryCount = 0;
-      const maxRetries = 3;
-      const baseDelay = 2000; // 2 seconds
+      if (existingUser) {
+        throw new Error('An account with this email already exists. Please login instead.');
+      }
 
-      while (retryCount < maxRetries) {
-        try {
-          const { data, error: signUpError } = await supabase.auth.signUp({
-            email: userData.email,
-            password: userData.password,
-            options: {
-              data: {
-                full_name: userData.fullName,
-                username: userData.username,
-                is_seller: userData.isSeller,
-                is_collector: userData.isCollector,
-                avatar_url: null
-              }
-            }
-          });
+      // Create user with Supabase auth
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            full_name: userData.fullName,
+            username: userData.username,
+            is_seller: userData.isSeller,
+            is_collector: userData.isCollector,
+            avatar_url: null
+          },
+          emailRedirectTo: window.location.origin // Add redirect URL
+        }
+      });
 
-          if (signUpError) {
-            if (signUpError.message?.includes('rate limit') || signUpError.status === 429) {
-              const delay = baseDelay * Math.pow(2, retryCount);
-              console.log(`Rate limit hit, retrying in ${delay/1000} seconds...`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-              retryCount++;
-              continue;
-            }
-            throw signUpError;
-          }
+      if (signUpError) {
+        console.error('Signup error:', signUpError);
+        if (signUpError.message?.includes('email')) {
+          throw new Error('Please enter a valid email address');
+        } else if (signUpError.message?.includes('password')) {
+          throw new Error('Password must be at least 6 characters long');
+        }
+        throw signUpError;
+      }
 
-          if (!data.user) {
-            throw new Error('No user data returned from signup');
-          }
+      if (!data.user) {
+        throw new Error('No user data returned from signup');
+      }
 
-          // Successfully created user, proceed with profile creation
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert([
-              {
-                id: data.user.id,
-                email: userData.email,
-                full_name: userData.fullName,
-                username: userData.username,
-                is_seller: userData.isSeller,
-                is_collector: userData.isCollector,
-                avatar_url: null
-              }
-            ]);
-
-          if (profileError) {
-            console.error('Error creating profile:', profileError);
-          }
-
-          // Set session if available
-          if (data.session) {
-            setSession(data.session);
-          }
-
-          // Create user object for state
-          const userWithProfile: User = {
+      // Create profile in the profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
             id: data.user.id,
             email: userData.email,
+            full_name: userData.fullName,
             username: userData.username,
-            fullName: userData.fullName,
-            avatar: null,
-            isSeller: userData.isSeller,
-            isCollector: userData.isCollector,
-            createdAt: new Date(data.user.created_at),
-            password: 'dummy-password'
-          };
-          
-          setUser(userWithProfile);
-          localStorage.setItem("user", JSON.stringify(userWithProfile));
-          
-          // Return successfully
-          return;
-
-        } catch (error: any) {
-          if (retryCount === maxRetries - 1) {
-            throw new Error("Unable to create account due to rate limiting. Please try again later or contact support.");
+            is_seller: userData.isSeller,
+            is_collector: userData.isCollector,
+            avatar_url: null
           }
-          retryCount++;
-          await new Promise(resolve => setTimeout(resolve, baseDelay * Math.pow(2, retryCount)));
-        }
+        ]);
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        // Don't throw here, as the user is already created
       }
+
+      // Set session if available (might not be available if email confirmation is required)
+      if (data.session) {
+        setSession(data.session);
+        
+        // Create user object for state
+        const userWithProfile: User = {
+          id: data.user.id,
+          email: userData.email,
+          username: userData.username,
+          fullName: userData.fullName,
+          avatar: null,
+          isSeller: userData.isSeller,
+          isCollector: userData.isCollector,
+          createdAt: new Date(data.user.created_at),
+          password: 'dummy-password'
+        };
+        
+        setUser(userWithProfile);
+        localStorage.setItem("user", JSON.stringify(userWithProfile));
+      }
+
+      return { requiresEmailConfirmation: !data.session };
 
     } catch (error) {
       console.error("Signup error:", error);

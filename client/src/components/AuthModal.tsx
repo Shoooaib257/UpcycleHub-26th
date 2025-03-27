@@ -60,8 +60,6 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
   const { login, signup, checkPasswordStrength } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [isRateLimited, setIsRateLimited] = useState(false);
-  const [retryAttempt, setRetryAttempt] = useState(0);
   const [passwordStrength, setPasswordStrength] = useState<{
     score: number;
     feedback: string[];
@@ -116,7 +114,6 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
   const handleSignupSubmit = async (values: z.infer<typeof signupSchema>) => {
     try {
       setIsLoading(true);
-      setRetryAttempt(0);
       
       await signup({
         email: values.email,
@@ -129,30 +126,31 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
       
       toast({
         title: "Sign up successful",
-        description: "Please check your email for verification instructions.",
+        description: "Please check your email for verification instructions. You'll need to verify your email before logging in.",
+        duration: 6000,
       });
       
       onClose();
+      
     } catch (error: any) {
       console.error("Signup error:", error);
       
-      if (error.message?.includes('rate limit') || error.message?.includes('Too many signup attempts')) {
-        setIsRateLimited(true);
-        setRetryAttempt(prev => prev + 1);
-        const waitTime = Math.min(300, Math.pow(2, retryAttempt) * 30); // Cap at 5 minutes
-        
-        toast({
-          title: "Please wait",
-          description: `Too many attempts. Please wait ${Math.round(waitTime/60)} minutes before trying again.`,
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Sign up failed",
-          description: error.message || "An error occurred during sign up.",
-          variant: "destructive",
-        });
+      // Handle specific error messages
+      let errorMessage = "An error occurred during sign up.";
+      if (error.message?.includes('email already exists')) {
+        errorMessage = "This email is already registered. Please try logging in instead.";
+      } else if (error.message?.includes('valid email')) {
+        errorMessage = "Please enter a valid email address.";
+      } else if (error.message?.includes('password')) {
+        errorMessage = error.message;
       }
+      
+      toast({
+        title: "Sign up failed",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 5000,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -248,167 +246,150 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
           <TabsContent value="signup">
             <Form {...signupForm}>
               <form onSubmit={signupForm.handleSubmit(handleSignupSubmit)} className="space-y-4">
-                {isRateLimited ? (
-                  <div className="p-4 bg-neutral-100 rounded-lg text-center">
-                    <p className="text-sm text-neutral-600 mb-2">
-                      Too many signup attempts. Please wait before trying again.
-                    </p>
-                    <CountdownTimer
-                      initialSeconds={Math.min(300, Math.pow(2, retryAttempt) * 30)}
-                      onComplete={() => {
-                        setIsRateLimited(false);
-                        setRetryAttempt(0);
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <FormField
-                      control={signupForm.control}
-                      name="fullName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Full Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter your full name" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={signupForm.control}
-                      name="username"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Username</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Choose a username" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={signupForm.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter your email" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={signupForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Password</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="password" 
-                              placeholder="Create a strong password" 
-                              {...field} 
-                              onChange={(e) => {
-                                field.onChange(e);
-                                handlePasswordChange(e.target.value);
-                              }}
-                            />
-                          </FormControl>
-                          <div className="mt-2">
-                            <Progress value={(passwordStrength.score / 4) * 100} className="h-1" />
-                            <div className="mt-2 text-sm">
-                              {passwordStrength.feedback.map((feedback, index) => (
-                                <div 
-                                  key={index} 
-                                  className={`text-sm ${
-                                    feedback === "Strong password!" 
-                                      ? "text-green-600" 
-                                      : "text-orange-600"
-                                  }`}
-                                >
-                                  {feedback}
-                                </div>
-                              ))}
+                <FormField
+                  control={signupForm.control}
+                  name="fullName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Full Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter your full name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={signupForm.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Username</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Choose a username" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={signupForm.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter your email" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={signupForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="password" 
+                          placeholder="Create a strong password" 
+                          {...field} 
+                          onChange={(e) => {
+                            field.onChange(e);
+                            handlePasswordChange(e.target.value);
+                          }}
+                        />
+                      </FormControl>
+                      <div className="mt-2">
+                        <Progress value={(passwordStrength.score / 4) * 100} className="h-1" />
+                        <div className="mt-2 text-sm">
+                          {passwordStrength.feedback.map((feedback, index) => (
+                            <div 
+                              key={index} 
+                              className={`text-sm ${
+                                feedback === "Strong password!" 
+                                  ? "text-green-600" 
+                                  : "text-orange-600"
+                              }`}
+                            >
+                              {feedback}
                             </div>
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <div className="space-y-4">
-                      <FormField
-                        control={signupForm.control}
-                        name="isSeller"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 leading-none">
-                              <FormLabel>I want to sell items</FormLabel>
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={signupForm.control}
-                        name="isCollector"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 leading-none">
-                              <FormLabel>I want to collect items</FormLabel>
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={signupForm.control}
-                        name="terms"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 leading-none">
-                              <FormLabel>I agree to the terms and conditions</FormLabel>
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? "Creating account..." : "Create Account"}
-                    </Button>
-                  </>
-                )}
+                          ))}
+                        </div>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <div className="space-y-4">
+                  <FormField
+                    control={signupForm.control}
+                    name="isSeller"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>I want to sell items</FormLabel>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={signupForm.control}
+                    name="isCollector"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>I want to collect items</FormLabel>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={signupForm.control}
+                    name="terms"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>I agree to the terms and conditions</FormLabel>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Creating account..." : "Create Account"}
+                </Button>
               </form>
             </Form>
           </TabsContent>
