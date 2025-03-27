@@ -61,6 +61,7 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isRateLimited, setIsRateLimited] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const [passwordStrength, setPasswordStrength] = useState<{
     score: number;
     feedback: string[];
@@ -115,6 +116,7 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
   const handleSignupSubmit = async (values: z.infer<typeof signupSchema>) => {
     try {
       setIsLoading(true);
+      setRetryAttempt(0);
       
       await signup({
         email: values.email,
@@ -127,19 +129,21 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
       
       toast({
         title: "Sign up successful",
-        description: "Your account has been created successfully.",
+        description: "Please check your email for verification instructions.",
       });
       
       onClose();
     } catch (error: any) {
       console.error("Signup error:", error);
       
-      // Check for rate limit error
-      if (error.message?.includes('Too many signup attempts')) {
+      if (error.message?.includes('rate limit') || error.message?.includes('Too many signup attempts')) {
         setIsRateLimited(true);
+        setRetryAttempt(prev => prev + 1);
+        const waitTime = Math.min(300, Math.pow(2, retryAttempt) * 30); // Cap at 5 minutes
+        
         toast({
-          title: "Rate limit exceeded",
-          description: "Please wait a few minutes before trying again.",
+          title: "Please wait",
+          description: `Too many attempts. Please wait ${Math.round(waitTime/60)} minutes before trying again.`,
           variant: "destructive",
         });
       } else {
@@ -152,10 +156,6 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleRateLimitComplete = () => {
-    setIsRateLimited(false);
   };
 
   // Add password strength check handler
@@ -249,10 +249,16 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
             <Form {...signupForm}>
               <form onSubmit={signupForm.handleSubmit(handleSignupSubmit)} className="space-y-4">
                 {isRateLimited ? (
-                  <div className="p-4 bg-neutral-100 rounded-lg">
+                  <div className="p-4 bg-neutral-100 rounded-lg text-center">
+                    <p className="text-sm text-neutral-600 mb-2">
+                      Too many signup attempts. Please wait before trying again.
+                    </p>
                     <CountdownTimer
-                      initialSeconds={300} // 5 minutes
-                      onComplete={handleRateLimitComplete}
+                      initialSeconds={Math.min(300, Math.pow(2, retryAttempt) * 30)}
+                      onComplete={() => {
+                        setIsRateLimited(false);
+                        setRetryAttempt(0);
+                      }}
                     />
                   </div>
                 ) : (
