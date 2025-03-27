@@ -1,7 +1,12 @@
 [build]
   command = "npm run build"
+  publish = "dist"
   functions = "netlify/functions"
-  publish = "dist/public"
+
+[dev]
+  command = "npm run dev"
+  port = 3000
+  targetPort = 5173
 
 [functions]
   node_bundler = "esbuild"
@@ -13,7 +18,6 @@
   from = "/api/*"
   to = "/.netlify/functions/api-direct/:splat"
   status = 200
-  force = true
 
 # All other routes go to the SPA
 [[redirects]]
