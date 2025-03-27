@@ -170,6 +170,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const supabase = getSupabase();
       
+      // Clear any existing auth data
+      await supabase.auth.signOut();
+      localStorage.removeItem("user");
+      
+      // Add a small delay before signup attempt
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       // Create user in Supabase auth
       const { data: { session }, error: authError } = await supabase.auth.signUp({
         email: userData.email,
@@ -188,8 +195,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (authError) {
         // Handle rate limit error specifically
         if (authError.message?.includes('rate limit') || authError.status === 429) {
+          console.error('Rate limit error:', authError);
           throw new Error(
-            "Too many signup attempts. Please wait a few minutes before trying again."
+            "Too many signup attempts. Please try using a different network connection or wait for an hour before trying again."
           );
         }
         throw authError;
