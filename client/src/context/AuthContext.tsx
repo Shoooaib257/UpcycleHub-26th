@@ -246,20 +246,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Validate and normalize email
       const email = userData.email.trim().toLowerCase();
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      if (!emailRegex.test(email)) {
+      if (!email) {
+        throw new Error("Email is required");
+      }
+
+      // Basic email validation
+      if (!email.includes('@') || !email.includes('.')) {
         throw new Error("Please enter a valid email address. Example: user@example.com");
       }
 
-      // Check if email already exists
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('email', email)
-        .single();
+      const [localPart, domain] = email.split('@');
+      if (!localPart || !domain || !domain.includes('.')) {
+        throw new Error("Please enter a valid email address. Example: user@example.com");
+      }
 
-      if (existingUser) {
-        throw new Error('An account with this email already exists. Please login instead.');
+      // Additional email format validation
+      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(email)) {
+        throw new Error("Invalid email format. Please use only letters, numbers, and common symbols. Example: user@example.com");
+      }
+
+      // Check if email already exists
+      try {
+        const { data: existingUser, error: checkError } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('email', email)
+          .single();
+
+        if (checkError && !checkError.message.includes('No rows found')) {
+          console.error('Error checking existing user:', checkError);
+        } else if (existingUser) {
+          throw new Error('An account with this email already exists. Please login instead.');
+        }
+      } catch (error: any) {
+        if (error.message.includes('exists')) {
+          throw error;
+        }
+        // If there's an error checking (other than exists), continue with signup
+        console.warn('Error checking existing user:', error);
       }
 
       // Create user with Supabase auth
@@ -274,22 +299,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             is_collector: userData.isCollector,
             avatar_url: null
           },
-          emailRedirectTo: window.location.origin
+          emailRedirectTo: `${window.location.origin}/auth/callback`
         }
       });
 
       if (signUpError) {
         console.error('Signup error:', signUpError);
-        if (signUpError.message?.toLowerCase().includes('email')) {
-          throw new Error('Please enter a valid email address. Example: user@example.com');
+        if (signUpError.status === 429) {
+          throw new Error("Too many signup attempts. Please try again in a few minutes.");
+        } else if (signUpError.message?.toLowerCase().includes('email')) {
+          throw new Error("Please enter a valid email address. Example: user@example.com");
         } else if (signUpError.message?.includes('password')) {
-          throw new Error('Password must be at least 6 characters long');
+          throw new Error("Password must be at least 6 characters long");
         }
         throw signUpError;
       }
 
       if (!data.user) {
-        throw new Error('No user data returned from signup');
+        throw new Error('Signup failed. Please try again.');
       }
 
       // Create profile in the profiles table
@@ -309,14 +336,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (profileError) {
         console.error('Error creating profile:', profileError);
-        // Don't throw here, as the user is already created
       }
 
-      // Set session if available (might not be available if email confirmation is required)
+      // Set session if available
       if (data.session) {
         setSession(data.session);
         
-        // Create user object for state
         const userWithProfile: User = {
           id: data.user.id,
           email: email,
@@ -335,8 +360,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       return { requiresEmailConfirmation: !data.session };
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Signup error:", error);
+      // Add delay if rate limit was hit
+      if (error.status === 429 || error.message?.includes('rate limit')) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+      }
       throw error;
     } finally {
       setIsLoading(false);

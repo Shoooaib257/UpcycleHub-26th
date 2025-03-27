@@ -46,14 +46,11 @@ const signupSchema = z.object({
   email: z.string()
     .min(1, { message: "Email is required" })
     .email("Invalid email format")
-    .refine((email) => email.includes("@"), {
-      message: "Email must contain @"
-    })
     .refine((email) => {
-      const [localPart, domain] = email.split("@");
-      return localPart && domain && domain.includes(".");
+      const trimmedEmail = email.trim().toLowerCase();
+      return /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(trimmedEmail);
     }, {
-      message: "Invalid email format"
+      message: "Please enter a valid email address. Example: user@example.com"
     }),
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
   isSeller: z.boolean(),
@@ -126,14 +123,8 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
     try {
       setIsLoading(true);
       
-      // Validate email format before sending to API
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      if (!emailRegex.test(values.email)) {
-        throw new Error("Please enter a valid email address");
-      }
-      
       await signup({
-        email: values.email.trim().toLowerCase(), // Normalize email
+        email: values.email.trim().toLowerCase(),
         password: values.password,
         fullName: values.fullName,
         username: values.username,
@@ -152,11 +143,15 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
     } catch (error: any) {
       console.error("Signup error:", error);
       
-      // Handle specific error messages
       let errorMessage = "An error occurred during sign up.";
-      if (error.message?.includes('email already exists')) {
+      let duration = 5000;
+
+      if (error.status === 429 || error.message?.includes('rate limit')) {
+        errorMessage = "Too many signup attempts. Please wait a few minutes before trying again.";
+        duration = 8000;
+      } else if (error.message?.includes('email already exists')) {
         errorMessage = "This email is already registered. Please try logging in instead.";
-      } else if (error.message?.toLowerCase().includes('email') || error.message?.toLowerCase().includes('valid')) {
+      } else if (error.message?.includes('valid email')) {
         errorMessage = "Please enter a valid email address. Example: user@example.com";
       } else if (error.message?.includes('password')) {
         errorMessage = error.message;
@@ -166,10 +161,20 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
         title: "Sign up failed",
         description: errorMessage,
         variant: "destructive",
-        duration: 5000,
+        duration: duration,
       });
+
+      // If it's a rate limit error, disable the form temporarily
+      if (error.status === 429 || error.message?.includes('rate limit')) {
+        setIsLoading(true);
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 30000); // Re-enable after 30 seconds
+      }
     } finally {
-      setIsLoading(false);
+      if (!isLoading) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -298,9 +303,20 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter your email" {...field} />
+                        <Input 
+                          placeholder="Enter your email" 
+                          {...field} 
+                          onChange={(e) => {
+                            field.onChange(e);
+                            // Clear any previous validation errors when user starts typing
+                            signupForm.clearErrors('email');
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
+                      <p className="text-sm text-muted-foreground">
+                        Use a valid email format: user@example.com
+                      </p>
                     </FormItem>
                   )}
                 />
