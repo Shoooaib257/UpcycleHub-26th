@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { getSupabase } from "@/lib/supabase";
+import { getSupabase, resetSupabaseClient } from "@/lib/supabase";
 import { User } from "@shared/schema";
 import { Session } from "@supabase/supabase-js";
 
@@ -63,11 +63,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const mockUser: MockUser = {
             id: supabaseSession.user.id, // Use the UUID directly as ID
             email: sessionEmail,
-            username: supabaseSession.user.user_metadata?.username || sessionEmail.split('@')[0] || 'user',
-            fullName: supabaseSession.user.user_metadata?.full_name || sessionEmail.split('@')[0] || 'User',
-            avatar: supabaseSession.user.user_metadata?.avatar || null,
-            isSeller: supabaseSession.user.user_metadata?.is_seller || false,
-            isCollector: supabaseSession.user.user_metadata?.is_collector || true,
+            username: (supabaseSession.user.user_metadata?.username as string) || sessionEmail.split('@')[0] || 'user',
+            fullName: (supabaseSession.user.user_metadata?.full_name as string) || sessionEmail.split('@')[0] || 'User',
+            avatar: (supabaseSession.user.user_metadata?.avatar_url as string | null) || null,
+            isSeller: (supabaseSession.user.user_metadata?.is_seller as boolean) || false,
+            isCollector: (supabaseSession.user.user_metadata?.is_collector as boolean) || true,
             createdAt: new Date(supabaseSession.user.created_at)
           };
           
@@ -287,8 +287,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.warn('Error checking existing user:', error);
       }
 
+      // Reset Supabase client to clear any rate limit state
+      resetSupabaseClient();
+      const freshSupabase = getSupabase();
+
       // Create user with Supabase auth
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await freshSupabase.auth.signUp({
         email,
         password: userData.password,
         options: {
@@ -306,6 +310,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (signUpError) {
         console.error('Signup error:', signUpError);
         if (signUpError.status === 429) {
+          // Reset client and wait before throwing
+          resetSupabaseClient();
+          await new Promise(resolve => setTimeout(resolve, 5000));
           throw new Error("Too many signup attempts. Please try again in a few minutes.");
         } else if (signUpError.message?.toLowerCase().includes('email')) {
           throw new Error("Please enter a valid email address. Example: user@example.com");
@@ -320,7 +327,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // Create profile in the profiles table
-      const { error: profileError } = await supabase
+      const { error: profileError } = await freshSupabase
         .from('profiles')
         .insert([
           {
@@ -362,9 +369,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     } catch (error: any) {
       console.error("Signup error:", error);
-      // Add delay if rate limit was hit
+      // Reset client and add delay if rate limit was hit
       if (error.status === 429 || error.message?.includes('rate limit')) {
-        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+        resetSupabaseClient();
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
       throw error;
     } finally {

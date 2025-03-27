@@ -1,30 +1,40 @@
 // Import only what we need from Supabase
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 // Get Supabase URL and anon key from environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = 'https://nemnixxpjftakcgvkpvn.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lbW5peHhwamZ0YWtjZ3ZrcHZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI5MTc0NjksImV4cCI6MjA1ODQ5MzQ2OX0.l2naVD6XZeHo1x6rbw4mrBOOlCtkjqyxNi6evKM6EIM';
 const siteUrl = import.meta.env.VITE_SITE_URL || 'https://67e3da5e67eec850e4da81fa--upcyclehub.netlify.app';
 
 // Create Supabase client lazily to reduce initial load
-let supabaseInstance: SupabaseClient | null = null;
+let supabaseInstance: ReturnType<typeof createClient> | null = null;
 
 // Export a function to get the Supabase client
-export const getSupabase = (): SupabaseClient => {
+export const getSupabase = () => {
   if (!supabaseInstance) {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.warn('Supabase credentials not found in environment variables.');
-    }
     supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        persistSession: true,
         autoRefreshToken: true,
-        storageKey: 'upcyclehub_auth',
-        storage: window.localStorage
+        persistSession: true,
+        detectSessionInUrl: true
+      },
+      global: {
+        headers: {
+          'x-client-info': 'upcycle-hub'
+        }
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 2
+        }
       }
     });
   }
   return supabaseInstance;
+};
+
+export const resetSupabaseClient = () => {
+  supabaseInstance = null;
 };
 
 // For backward compatibility
