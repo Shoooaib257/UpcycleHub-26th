@@ -6,39 +6,39 @@ const supabaseUrl = 'https://nemnixxpjftakcgvkpvn.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lbW5peHhwamZ0YWtjZ3ZrcHZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI5MTc0NjksImV4cCI6MjA1ODQ5MzQ2OX0.l2naVD6XZeHo1x6rbw4mrBOOlCtkjqyxNi6evKM6EIM';
 const siteUrl = import.meta.env.VITE_SITE_URL || 'https://67e3da5e67eec850e4da81fa--upcyclehub.netlify.app';
 
-// Create Supabase client lazily to reduce initial load
-let supabaseInstance: ReturnType<typeof createClient> | null = null;
-
-// Export a function to get the Supabase client
-export const getSupabase = () => {
-  if (!supabaseInstance) {
-    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true
-      },
-      global: {
-        headers: {
-          'x-client-info': 'upcycle-hub'
-        }
-      },
-      realtime: {
-        params: {
-          eventsPerSecond: 2
-        }
-      }
-    });
+// Create a single instance of the Supabase client
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    storage: localStorage
+  },
+  global: {
+    headers: {
+      'x-client-info': 'upcycle-hub'
+    }
   }
-  return supabaseInstance;
-};
+});
 
-export const resetSupabaseClient = () => {
-  supabaseInstance = null;
-};
+// Export the singleton instance
+export const getSupabase = () => supabase;
 
-// For backward compatibility
-export const supabase = getSupabase();
+// Export for backward compatibility
+export { supabase };
+
+// Function to clear auth state
+export const clearAuthState = async () => {
+  try {
+    await supabase.auth.signOut();
+    localStorage.removeItem("user");
+    localStorage.removeItem("supabase.auth.token");
+    sessionStorage.removeItem("supabase.auth.token");
+  } catch (error) {
+    console.error("Error clearing auth state:", error);
+  }
+};
 
 // Bucket name constant for easier management
 const BUCKET_NAME = import.meta.env.VITE_STORAGE_BUCKET_NAME || 'upcycle-hub';

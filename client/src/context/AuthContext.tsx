@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { getSupabase, resetSupabaseClient } from "@/lib/supabase";
+import { getSupabase, clearAuthState } from "@/lib/supabase";
 import { User } from "@shared/schema";
 import { Session } from "@supabase/supabase-js";
 
@@ -37,52 +37,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const supabase = getSupabase();
 
   // Check for existing user session on load
   useEffect(() => {
     const checkUser = async () => {
       try {
-        // Try to load user from localStorage first
-        const savedUser = localStorage.getItem("user");
-        if (savedUser) {
-          const parsedUser = JSON.parse(savedUser);
-          setUser(parsedUser);
-          console.log("Loaded user from localStorage:", parsedUser);
-        }
-
-        // Try to get session from Supabase
-        const supabase = getSupabase();
         const { data: { session: supabaseSession }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
           console.error("Error getting session:", sessionError);
-          // Continue with localStorage user if available
-        } else if (supabaseSession?.user) {
+          return;
+        }
+
+        if (supabaseSession?.user) {
           setSession(supabaseSession);
-          const sessionEmail = supabaseSession.user.email || "";
-          const mockUser: MockUser = {
-            id: supabaseSession.user.id, // Use the UUID directly as ID
-            email: sessionEmail,
-            username: (supabaseSession.user.user_metadata?.username as string) || sessionEmail.split('@')[0] || 'user',
-            fullName: (supabaseSession.user.user_metadata?.full_name as string) || sessionEmail.split('@')[0] || 'User',
-            avatar: (supabaseSession.user.user_metadata?.avatar_url as string | null) || null,
-            isSeller: (supabaseSession.user.user_metadata?.is_seller as boolean) || false,
-            isCollector: (supabaseSession.user.user_metadata?.is_collector as boolean) || true,
-            createdAt: new Date(supabaseSession.user.created_at)
+          
+          // Get user profile data
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', supabaseSession.user.id)
+            .single();
+
+          if (profileError && !profileError.message.includes('No rows found')) {
+            console.error("Error fetching profile:", profileError);
+          }
+
+          const userWithProfile: User = {
+            id: supabaseSession.user.id,
+            email: supabaseSession.user.email || "",
+            username: profile?.username || supabaseSession.user.email?.split('@')[0] || 'user',
+            fullName: profile?.full_name || supabaseSession.user.email?.split('@')[0] || 'User',
+            avatar: profile?.avatar_url || null,
+            isSeller: profile?.is_seller || false,
+            isCollector: profile?.is_collector || true,
+            createdAt: new Date(supabaseSession.user.created_at),
+            password: 'dummy-password'
           };
           
-          // Add a dummy password since the User type expects it
-          const userWithPassword: User = {
-            ...mockUser,
-            password: 'dummy-password' // This is never actually used
-          };
-          
-          setUser(userWithPassword);
-          localStorage.setItem("user", JSON.stringify(userWithPassword));
+          setUser(userWithProfile);
+          localStorage.setItem("user", JSON.stringify(userWithProfile));
         }
       } catch (error) {
         console.error("Error checking user:", error);
-        // Continue with localStorage user if available
       } finally {
         setIsLoading(false);
       }
@@ -90,12 +88,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     checkUser();
     
-    // Set up session change listener
-    const supabase = getSupabase();
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
+      if (!session) {
+        setUser(null);
+        localStorage.removeItem("user");
+      }
     });
 
     return () => {
@@ -230,69 +230,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signup = async (userData: SignupData) => {
     setIsLoading(true);
     try {
-      // Check password strength before proceeding
+      // Check password strength
       const passwordCheck = checkPasswordStrength(userData.password);
       if (!passwordCheck.isStrong) {
         throw new Error(`Password is not strong enough. ${passwordCheck.feedback.join(". ")}`);
       }
 
-      const supabase = getSupabase();
-      
-      // Clear any existing auth data and sessions
-      await supabase.auth.signOut();
-      localStorage.removeItem("user");
-      localStorage.removeItem("supabase.auth.token");
-      sessionStorage.removeItem("supabase.auth.token");
+      // Clear any existing auth state
+      await clearAuthState();
 
-      // Validate and normalize email
+      // Normalize and validate email
       const email = userData.email.trim().toLowerCase();
-      if (!email) {
-        throw new Error("Email is required");
-      }
-
-      // Basic email validation
-      if (!email.includes('@') || !email.includes('.')) {
+      if (!email || !email.includes('@') || !email.includes('.')) {
         throw new Error("Please enter a valid email address. Example: user@example.com");
-      }
-
-      const [localPart, domain] = email.split('@');
-      if (!localPart || !domain || !domain.includes('.')) {
-        throw new Error("Please enter a valid email address. Example: user@example.com");
-      }
-
-      // Additional email format validation
-      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      if (!emailRegex.test(email)) {
-        throw new Error("Invalid email format. Please use only letters, numbers, and common symbols. Example: user@example.com");
       }
 
       // Check if email already exists
-      try {
-        const { data: existingUser, error: checkError } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('email', email)
-          .single();
+      const { data: existingUser, error: checkError } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('email', email)
+        .maybeSingle();
 
-        if (checkError && !checkError.message.includes('No rows found')) {
-          console.error('Error checking existing user:', checkError);
-        } else if (existingUser) {
-          throw new Error('An account with this email already exists. Please login instead.');
-        }
-      } catch (error: any) {
-        if (error.message.includes('exists')) {
-          throw error;
-        }
-        // If there's an error checking (other than exists), continue with signup
-        console.warn('Error checking existing user:', error);
+      if (existingUser) {
+        throw new Error('An account with this email already exists. Please login instead.');
       }
 
-      // Reset Supabase client to clear any rate limit state
-      resetSupabaseClient();
-      const freshSupabase = getSupabase();
-
       // Create user with Supabase auth
-      const { data, error: signUpError } = await freshSupabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password: userData.password,
         options: {
@@ -308,16 +273,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (signUpError) {
-        console.error('Signup error:', signUpError);
         if (signUpError.status === 429) {
-          // Reset client and wait before throwing
-          resetSupabaseClient();
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          throw new Error("Too many signup attempts. Please try again in a few minutes.");
-        } else if (signUpError.message?.toLowerCase().includes('email')) {
-          throw new Error("Please enter a valid email address. Example: user@example.com");
-        } else if (signUpError.message?.includes('password')) {
-          throw new Error("Password must be at least 6 characters long");
+          throw new Error("Too many signup attempts. Please wait a few minutes before trying again.");
         }
         throw signUpError;
       }
@@ -327,7 +284,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // Create profile in the profiles table
-      const { error: profileError } = await freshSupabase
+      const { error: profileError } = await supabase
         .from('profiles')
         .insert([
           {
@@ -345,33 +302,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.error('Error creating profile:', profileError);
       }
 
-      // Set session if available
-      if (data.session) {
-        setSession(data.session);
-        
-        const userWithProfile: User = {
-          id: data.user.id,
-          email: email,
-          username: userData.username,
-          fullName: userData.fullName,
-          avatar: null,
-          isSeller: userData.isSeller,
-          isCollector: userData.isCollector,
-          createdAt: new Date(data.user.created_at),
-          password: 'dummy-password'
-        };
-        
-        setUser(userWithProfile);
-        localStorage.setItem("user", JSON.stringify(userWithProfile));
-      }
-
       return { requiresEmailConfirmation: !data.session };
 
     } catch (error: any) {
       console.error("Signup error:", error);
-      // Reset client and add delay if rate limit was hit
-      if (error.status === 429 || error.message?.includes('rate limit')) {
-        resetSupabaseClient();
+      if (error.status === 429) {
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
       throw error;
