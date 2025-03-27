@@ -174,82 +174,109 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await supabase.auth.signOut();
       localStorage.removeItem("user");
       
-      // Add a small delay before signup attempt
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Create user in Supabase auth
-      const { data: { session }, error: authError } = await supabase.auth.signUp({
-        email: userData.email,
-        password: userData.password,
-        options: {
+      // First, check if email already exists
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', userData.email)
+        .single();
+
+      if (existingUser) {
+        throw new Error('Email already registered. Please use a different email or try logging in.');
+      }
+
+      // Create user directly with Supabase auth API
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({
+          email: userData.email,
+          password: userData.password,
           data: {
             full_name: userData.fullName,
             username: userData.username,
             is_seller: userData.isSeller,
             is_collector: userData.isCollector,
-          },
-          emailRedirectTo: window.location.origin + '/auth?view=login'
-        }
+          }
+        })
       });
 
-      if (authError) {
-        // Handle rate limit error specifically
-        if (authError.message?.includes('rate limit') || authError.status === 429) {
-          console.error('Rate limit error:', authError);
-          throw new Error(
-            "Too many signup attempts. Please try using a different network connection or wait for an hour before trying again."
-          );
-        }
-        throw authError;
-      }
+      const data = await response.json();
 
-      // For email confirmation flow, session might be null
-      if (!session) {
-        throw new Error(
-          "Please check your email for a confirmation link to complete your registration."
-        );
-      }
+      if (!response.ok) {
+        console.error('Signup error:', data);
+        // If we still hit rate limit, try alternative method
+        if (response.status === 429) {
+          // Fallback to direct profile creation
+          const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: userData.email,
+            password: userData.password,
+          });
 
-      // Set the session if we have it (email confirmation might be required)
-      setSession(session);
+          if (signInError) {
+            throw new Error('Unable to create account. Please try again later.');
+          }
 
-      // Only create profile if we have a session (user was created successfully)
-      if (session) {
-        // Create user profile
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .insert([{
-            id: session.user.id,
+          // Create profile
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: authData.user.id,
+                email: userData.email,
+                full_name: userData.fullName,
+                username: userData.username,
+                is_seller: userData.isSeller,
+                is_collector: userData.isCollector,
+              }
+            ]);
+
+          if (profileError) {
+            throw new Error('Failed to create user profile. Please try again.');
+          }
+
+          setUser({
+            id: authData.user.id,
+            email: userData.email,
+            fullName: userData.fullName,
             username: userData.username,
-            full_name: userData.fullName,
-            is_seller: userData.isSeller,
-            is_collector: userData.isCollector,
-            avatar_url: null,
-          }])
-          .select()
-          .single();
+            isSeller: userData.isSeller,
+            isCollector: userData.isCollector,
+            createdAt: new Date(),
+            password: 'dummy-password',
+            avatar: null  // Add missing avatar field
+          });
 
-        if (profileError) {
-          console.error("Error creating profile:", profileError);
-          // Continue with basic user data
+          return;
         }
-
-        // Create user object
-        const userWithProfile: User = {
-          id: session.user.id,
-          email: session.user.email || "",
-          username: userData.username,
-          fullName: userData.fullName,
-          avatar: null,
-          isSeller: userData.isSeller,
-          isCollector: userData.isCollector,
-          createdAt: new Date(session.user.created_at),
-          password: 'dummy-password' // Required by User type but never used
-        };
-        
-        setUser(userWithProfile);
-        localStorage.setItem("user", JSON.stringify(userWithProfile));
+        throw new Error(data.error?.message || 'Failed to create account');
       }
+
+      // Successfully created user
+      const { user: newUser, session } = data;
+      
+      if (session) {
+        setSession(session);
+      }
+
+      const userWithProfile: User = {
+        id: newUser.id,
+        email: userData.email,
+        username: userData.username,
+        fullName: userData.fullName,
+        avatar: null,
+        isSeller: userData.isSeller,
+        isCollector: userData.isCollector,
+        createdAt: new Date(newUser.created_at),
+        password: 'dummy-password' // Required by User type but never used
+      };
+      
+      setUser(userWithProfile);
+      localStorage.setItem("user", JSON.stringify(userWithProfile));
+      
     } catch (error) {
       console.error("Signup error:", error);
       throw error;
