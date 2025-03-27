@@ -4,6 +4,8 @@
   "description": "Netlify functions for UpcycleHub",
   "main": "api-direct.js",
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.7"
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@supabase/supabase-js": "^2.39.7",
+    "dotenv": "^16.4.7"
   }
-} 
+}
