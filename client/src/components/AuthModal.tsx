@@ -43,7 +43,18 @@ const loginSchema = z.object({
 const signupSchema = z.object({
   fullName: z.string().min(2, { message: "Full name must be at least 2 characters" }),
   username: z.string().min(3, { message: "Username must be at least 3 characters" }),
-  email: z.string().email({ message: "Please enter a valid email address" }),
+  email: z.string()
+    .min(1, { message: "Email is required" })
+    .email("Invalid email format")
+    .refine((email) => email.includes("@"), {
+      message: "Email must contain @"
+    })
+    .refine((email) => {
+      const [localPart, domain] = email.split("@");
+      return localPart && domain && domain.includes(".");
+    }, {
+      message: "Invalid email format"
+    }),
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
   isSeller: z.boolean(),
   isCollector: z.boolean(),
@@ -115,8 +126,14 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
     try {
       setIsLoading(true);
       
+      // Validate email format before sending to API
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(values.email)) {
+        throw new Error("Please enter a valid email address");
+      }
+      
       await signup({
-        email: values.email,
+        email: values.email.trim().toLowerCase(), // Normalize email
         password: values.password,
         fullName: values.fullName,
         username: values.username,
@@ -139,8 +156,8 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
       let errorMessage = "An error occurred during sign up.";
       if (error.message?.includes('email already exists')) {
         errorMessage = "This email is already registered. Please try logging in instead.";
-      } else if (error.message?.includes('valid email')) {
-        errorMessage = "Please enter a valid email address.";
+      } else if (error.message?.toLowerCase().includes('email') || error.message?.toLowerCase().includes('valid')) {
+        errorMessage = "Please enter a valid email address. Example: user@example.com";
       } else if (error.message?.includes('password')) {
         errorMessage = error.message;
       }

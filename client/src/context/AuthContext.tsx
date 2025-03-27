@@ -13,7 +13,7 @@ type AuthContextType = {
   user: User | null;
   session: Session | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (userData: SignupData) => Promise<void>;
+  signup: (userData: SignupData) => Promise<{ requiresEmailConfirmation: boolean }>;
   logout: () => Promise<void>;
   isLoading: boolean;
   checkPasswordStrength: (password: string) => PasswordStrength;
@@ -244,11 +244,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.removeItem("supabase.auth.token");
       sessionStorage.removeItem("supabase.auth.token");
 
+      // Validate and normalize email
+      const email = userData.email.trim().toLowerCase();
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(email)) {
+        throw new Error("Please enter a valid email address. Example: user@example.com");
+      }
+
       // Check if email already exists
       const { data: existingUser } = await supabase
         .from('profiles')
         .select('email')
-        .eq('email', userData.email)
+        .eq('email', email)
         .single();
 
       if (existingUser) {
@@ -257,7 +264,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Create user with Supabase auth
       const { data, error: signUpError } = await supabase.auth.signUp({
-        email: userData.email,
+        email,
         password: userData.password,
         options: {
           data: {
@@ -267,14 +274,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             is_collector: userData.isCollector,
             avatar_url: null
           },
-          emailRedirectTo: window.location.origin // Add redirect URL
+          emailRedirectTo: window.location.origin
         }
       });
 
       if (signUpError) {
         console.error('Signup error:', signUpError);
-        if (signUpError.message?.includes('email')) {
-          throw new Error('Please enter a valid email address');
+        if (signUpError.message?.toLowerCase().includes('email')) {
+          throw new Error('Please enter a valid email address. Example: user@example.com');
         } else if (signUpError.message?.includes('password')) {
           throw new Error('Password must be at least 6 characters long');
         }
@@ -291,7 +298,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .insert([
           {
             id: data.user.id,
-            email: userData.email,
+            email: email,
             full_name: userData.fullName,
             username: userData.username,
             is_seller: userData.isSeller,
@@ -312,7 +319,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Create user object for state
         const userWithProfile: User = {
           id: data.user.id,
-          email: userData.email,
+          email: email,
           username: userData.username,
           fullName: userData.fullName,
           avatar: null,
