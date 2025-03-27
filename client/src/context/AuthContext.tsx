@@ -3,6 +3,12 @@ import { getSupabase } from "@/lib/supabase";
 import { User } from "@shared/schema";
 import { Session } from "@supabase/supabase-js";
 
+type PasswordStrength = {
+  score: number;  // 0-4, where 4 is strongest
+  feedback: string[];
+  isStrong: boolean;
+};
+
 type AuthContextType = {
   user: User | null;
   session: Session | null;
@@ -10,6 +16,7 @@ type AuthContextType = {
   signup: (userData: SignupData) => Promise<void>;
   logout: () => Promise<void>;
   isLoading: boolean;
+  checkPasswordStrength: (password: string) => PasswordStrength;
 };
 
 type SignupData = {
@@ -165,9 +172,70 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const checkPasswordStrength = (password: string): PasswordStrength => {
+    const feedback: string[] = [];
+    let score = 0;
+
+    // Check length
+    if (password.length < 8) {
+      feedback.push("Password should be at least 8 characters long");
+    } else if (password.length >= 12) {
+      score += 2;
+    } else {
+      score += 1;
+    }
+
+    // Check for numbers
+    if (/\d/.test(password)) {
+      score += 1;
+    } else {
+      feedback.push("Add numbers for a stronger password");
+    }
+
+    // Check for special characters
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      score += 1;
+    } else {
+      feedback.push("Add special characters for a stronger password");
+    }
+
+    // Check for mixed case
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) {
+      score += 1;
+    } else {
+      feedback.push("Use both upper and lower case letters");
+    }
+
+    // Check for common patterns
+    const commonPatterns = [
+      '123', '456', '789', 'abc', 'qwerty', 'password', 'admin'
+    ];
+    if (commonPatterns.some(pattern => password.toLowerCase().includes(pattern))) {
+      score = Math.max(0, score - 1);
+      feedback.push("Avoid common patterns in your password");
+    }
+
+    // If password is strong enough but no feedback, add positive feedback
+    if (score >= 3 && feedback.length === 0) {
+      feedback.push("Strong password!");
+    }
+
+    return {
+      score,
+      feedback,
+      isStrong: score >= 3
+    };
+  };
+
   const signup = async (userData: SignupData) => {
     setIsLoading(true);
     try {
+      // Check password strength before proceeding
+      const passwordCheck = checkPasswordStrength(userData.password);
+      if (!passwordCheck.isStrong) {
+        throw new Error(`Password is not strong enough. ${passwordCheck.feedback.join(". ")}`);
+      }
+
       const supabase = getSupabase();
       
       // Clear any existing auth data
@@ -281,7 +349,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, login, signup, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, session, login, signup, logout, isLoading, checkPasswordStrength }}>
       {children}
     </AuthContext.Provider>
   );

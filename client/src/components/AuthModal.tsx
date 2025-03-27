@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 
 type AuthModalProps = {
   isOpen: boolean;
@@ -44,11 +45,11 @@ const signupSchema = z.object({
   username: z.string().min(3, { message: "Username must be at least 3 characters" }),
   email: z.string().email({ message: "Please enter a valid email address" }),
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
-  isSeller: z.boolean().default(false),
-  isCollector: z.boolean().default(true),
-  terms: z.literal(true, {
-    errorMap: () => ({ message: "You must accept the terms and conditions" }),
-  }),
+  isSeller: z.boolean(),
+  isCollector: z.boolean(),
+  terms: z.boolean().refine((val) => val === true, {
+    message: "You must accept the terms and conditions"
+  })
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -56,10 +57,15 @@ type SignupFormValues = z.infer<typeof signupSchema>;
 
 const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
   const [activeTab, setActiveTab] = useState<string>(initialView);
-  const { login, signup } = useAuth();
+  const { login, signup, checkPasswordStrength } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isRateLimited, setIsRateLimited] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState<{
+    score: number;
+    feedback: string[];
+    isStrong: boolean;
+  }>({ score: 0, feedback: [], isStrong: false });
 
   // Login form
   const loginForm = useForm<LoginFormValues>({
@@ -150,6 +156,12 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
 
   const handleRateLimitComplete = () => {
     setIsRateLimited(false);
+  };
+
+  // Add password strength check handler
+  const handlePasswordChange = (value: string) => {
+    const strength = checkPasswordStrength(value);
+    setPasswordStrength(strength);
   };
 
   return (
@@ -294,8 +306,33 @@ const AuthModal = ({ isOpen, onClose, initialView }: AuthModalProps) => {
                         <FormItem>
                           <FormLabel>Password</FormLabel>
                           <FormControl>
-                            <Input type="password" placeholder="Create a password" {...field} />
+                            <Input 
+                              type="password" 
+                              placeholder="Create a strong password" 
+                              {...field} 
+                              onChange={(e) => {
+                                field.onChange(e);
+                                handlePasswordChange(e.target.value);
+                              }}
+                            />
                           </FormControl>
+                          <div className="mt-2">
+                            <Progress value={(passwordStrength.score / 4) * 100} className="h-1" />
+                            <div className="mt-2 text-sm">
+                              {passwordStrength.feedback.map((feedback, index) => (
+                                <div 
+                                  key={index} 
+                                  className={`text-sm ${
+                                    feedback === "Strong password!" 
+                                      ? "text-green-600" 
+                                      : "text-orange-600"
+                                  }`}
+                                >
+                                  {feedback}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
