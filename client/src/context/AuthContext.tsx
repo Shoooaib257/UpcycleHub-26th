@@ -173,109 +173,82 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Clear any existing auth data
       await supabase.auth.signOut();
       localStorage.removeItem("user");
-      
-      // First, check if email already exists
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', userData.email)
-        .single();
 
-      if (existingUser) {
-        throw new Error('Email already registered. Please use a different email or try logging in.');
-      }
-
-      // Create user directly with Supabase auth API
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY
-        },
-        body: JSON.stringify({
-          email: userData.email,
-          password: userData.password,
+      // Create user with Supabase auth
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
           data: {
             full_name: userData.fullName,
             username: userData.username,
             is_seller: userData.isSeller,
             is_collector: userData.isCollector,
-          }
-        })
+            avatar_url: null
+          },
+          emailRedirectTo: `${window.location.origin}/auth?view=login`
+        }
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('Signup error:', data);
-        // If we still hit rate limit, try alternative method
-        if (response.status === 429) {
-          // Fallback to direct profile creation
-          const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: userData.email,
-            password: userData.password,
-          });
-
-          if (signInError) {
-            throw new Error('Unable to create account. Please try again later.');
-          }
-
-          // Create profile
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert([
-              {
-                id: authData.user.id,
-                email: userData.email,
-                full_name: userData.fullName,
-                username: userData.username,
-                is_seller: userData.isSeller,
-                is_collector: userData.isCollector,
-              }
-            ]);
-
-          if (profileError) {
-            throw new Error('Failed to create user profile. Please try again.');
-          }
-
-          setUser({
-            id: authData.user.id,
-            email: userData.email,
-            fullName: userData.fullName,
-            username: userData.username,
-            isSeller: userData.isSeller,
-            isCollector: userData.isCollector,
-            createdAt: new Date(),
-            password: 'dummy-password',
-            avatar: null  // Add missing avatar field
-          });
-
-          return;
+      if (signUpError) {
+        console.error('Signup error:', signUpError);
+        
+        if (signUpError.message?.includes('rate limit')) {
+          throw new Error(
+            "We're experiencing high traffic. Please try again in a few minutes or contact support if the issue persists."
+          );
         }
-        throw new Error(data.error?.message || 'Failed to create account');
+        
+        throw new Error(signUpError.message || 'Failed to create account');
       }
 
-      // Successfully created user
-      const { user: newUser, session } = data;
-      
-      if (session) {
-        setSession(session);
+      if (!data.user) {
+        throw new Error('No user data returned from signup');
       }
 
+      // Set session if available
+      if (data.session) {
+        setSession(data.session);
+      }
+
+      // Create user profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: data.user.id,
+            email: userData.email,
+            full_name: userData.fullName,
+            username: userData.username,
+            is_seller: userData.isSeller,
+            is_collector: userData.isCollector,
+            avatar_url: null
+          }
+        ]);
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        // Continue anyway as the auth user was created
+      }
+
+      // Create user object for state
       const userWithProfile: User = {
-        id: newUser.id,
+        id: data.user.id,
         email: userData.email,
         username: userData.username,
         fullName: userData.fullName,
         avatar: null,
         isSeller: userData.isSeller,
         isCollector: userData.isCollector,
-        createdAt: new Date(newUser.created_at),
+        createdAt: new Date(data.user.created_at),
         password: 'dummy-password' // Required by User type but never used
       };
       
       setUser(userWithProfile);
       localStorage.setItem("user", JSON.stringify(userWithProfile));
+
+      // Show success message
+      console.log('Account created successfully. Please check your email for verification.');
       
     } catch (error) {
       console.error("Signup error:", error);
